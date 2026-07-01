@@ -31,6 +31,18 @@ Rollout order:
     10. Statistical decision support
 """
 
-from strategy.config import FeatureFlags, get_feature_flags
+from strategy.config import FeatureFlags, get_feature_flags, reset_feature_flags
+from strategy.runner import (
+    ChampionChallengerRunner,
+    EvaluationResult,
+    SetupResult,
+)
 
-__all__ = ["FeatureFlags", "get_feature_flags"]
+__all__ = [
+    "FeatureFlags",
+    "get_feature_flags",
+    "reset_feature_flags",
+    "ChampionChallengerRunner",
+    "EvaluationResult",
+    "SetupResult",
+]

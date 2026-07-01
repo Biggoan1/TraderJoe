@@ -10,6 +10,14 @@ import yfinance as yf
 from dotenv import load_dotenv
 from openai import OpenAI
 from alpaca.trading.client import TradingClient
+
+# --- Champion/Challenger framework ---
+# All feature flags disabled by default → system behaves identically to
+# the codebase before this change. Challenger runs in shadow only.
+from strategy.runner import ChampionChallengerRunner
+
+_cc_runner = ChampionChallengerRunner()
+
 import telegram_approvals
 
 load_dotenv(".env")
