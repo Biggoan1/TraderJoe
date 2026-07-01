@@ -334,6 +334,33 @@ class TradeLogger:
 
         return trades
 
+    def get_day_trades(self, date: str) -> List[Dict[str, Any]]:
+        """Get all trades that occurred on a specific date (UTC).
+
+        Args:
+            date: Date string in YYYY-MM-DD format.
+
+        Returns:
+            List of trade dicts for that day.
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        day_start = f"{date}T00:00:00"
+        day_end = f"{date}T23:59:59"
+
+        rows = cur.execute("""
+            SELECT * FROM trades
+            WHERE entry_time >= ? AND entry_time <= ?
+            ORDER BY entry_time ASC
+        """, (day_start, day_end)).fetchall()
+
+        trades = [dict(row) for row in rows]
+        conn.close()
+
+        return trades
+
     def get_summary_report(self) -> Dict[str, Any]:
         """Generate a summary report from all closed trades.
 
