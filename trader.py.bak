@@ -1,0 +1,517 @@
+import os
+import sqlite3
+from datetime import datetime
+
+import pandas as pd
+import requests
+import yfinance as yf
+from dotenv import load_dotenv
+from openai import OpenAI
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
+
+load_dotenv(".env")
+
+PAPER = True
+AGENT_NAME = "Trader Joe"
+AI_MODEL = "gpt-5-mini"
+DB_FILE = "trades.db"
+
+DEFAULT_BUY_AMOUNT = 500
+MAX_BUY_AMOUNT = 10000
+
+WATCHLIST = [
+    "SPY",
+    "QQQ",
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AVGO",
+    "AMD",
+    "TSLA"
+]
+
+client = TradingClient(
+    os.getenv("ALPACA_API_KEY"),
+    os.getenv("ALPACA_SECRET_KEY"),
+    paper=PAPER
+)
+
+ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+
+def send_telegram(message):
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id:
+        return
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    try:
+        requests.post(url, json={
+            "chat_id": chat_id,
+            "text": message
+        }, timeout=10)
+    except Exception as e:
+        print(f"Telegram send failed: {e}")
+
+
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS recommendations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT,
+            symbol TEXT,
+            price REAL,
+            sma20 REAL,
+            sma50 REAL,
+            signal TEXT,
+            ai_analysis TEXT,
+            user_decision TEXT,
+            order_status TEXT
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT,
+            cash REAL,
+            portfolio_value REAL,
+            symbol TEXT,
+            qty REAL,
+            market_value REAL,
+            unrealized_pl REAL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def log_recommendation(symbol, price, sma20, sma50, signal, ai_analysis, user_decision, order_status):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO recommendations (
+            created_at, symbol, price, sma20, sma50,
+            signal, ai_analysis, user_decision, order_status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        datetime.now().isoformat(),
+        symbol,
+        price,
+        sma20,
+        sma50,
+        signal,
+        ai_analysis,
+        user_decision,
+        order_status
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def log_portfolio_snapshot():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    acct = client.get_account()
+    positions = client.get_all_positions()
+    now = datetime.now().isoformat()
+
+    if not positions:
+        cur.execute("""
+            INSERT INTO portfolio_snapshots (
+                created_at, cash, portfolio_value, symbol, qty, market_value, unrealized_pl
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            now,
+            float(acct.cash),
+            float(acct.portfolio_value),
+            "CASH",
+            0,
+            0,
+            0
+        ))
+    else:
+        for p in positions:
+            cur.execute("""
+                INSERT INTO portfolio_snapshots (
+                    created_at, cash, portfolio_value, symbol, qty, market_value, unrealized_pl
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                now,
+                float(acct.cash),
+                float(acct.portfolio_value),
+                p.symbol,
+                float(p.qty),
+                float(p.market_value),
+                float(p.unrealized_pl)
+            ))
+
+    conn.commit()
+    conn.close()
+
+
+def risk_check(symbol, dollars):
+    forbidden = ["TQQQ", "SQQQ", "UVXY"]
+
+    if symbol in forbidden:
+        return False, "Forbidden leveraged/high-risk ticker"
+
+    if dollars > MAX_BUY_AMOUNT:
+        return False, f"Buy amount too large. Max allowed is ${MAX_BUY_AMOUNT}"
+
+    acct = client.get_account()
+
+    if float(acct.cash) < dollars:
+        return False, "Not enough cash"
+
+    return True, "OK"
+
+
+def already_owned(symbol):
+    for pos in client.get_all_positions():
+        if pos.symbol == symbol:
+            return True
+    return False
+
+
+def has_open_order(symbol):
+    for order in client.get_orders():
+        if order.symbol == symbol:
+            return True
+    return False
+
+
+def parse_buy_amount(answer):
+    answer = answer.strip().lower()
+
+    if answer in ["n", "no", "skip"]:
+        return False, 0
+
+    if answer in ["y", "yes"]:
+        return True, DEFAULT_BUY_AMOUNT
+
+    try:
+        amount = float(answer)
+        if amount <= 0:
+            return False, 0
+        return True, amount
+    except ValueError:
+        return False, 0
+
+
+def get_signal(symbol):
+    data = yf.download(
+        symbol,
+        period="6mo",
+        interval="1d",
+        progress=False,
+        auto_adjust=True
+    )
+
+    if data.empty:
+        return "NO DATA", None, None, None
+
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
+
+    data["SMA20"] = data["Close"].rolling(20).mean()
+    data["SMA50"] = data["Close"].rolling(50).mean()
+
+    last = data.iloc[-1]
+
+    price = float(last["Close"])
+    sma20 = float(last["SMA20"])
+    sma50 = float(last["SMA50"])
+
+    if sma20 > sma50:
+        return "BUY", price, sma20, sma50
+
+    return "HOLD", price, sma20, sma50
+
+
+def ai_analyze(symbol, price, sma20, sma50):
+    prompt = f"""
+You are Trader Joe, a cautious but lighthearted stock trading analyst.
+
+Analyze this possible paper-trade setup.
+
+Ticker: {symbol}
+Current price: {price:.2f}
+20-day SMA: {sma20:.2f}
+50-day SMA: {sma50:.2f}
+Signal: SMA20 is above SMA50
+
+Rules:
+- This is paper trading.
+- No options.
+- No leverage.
+- No day trading.
+- Conservative position sizing.
+- Do not claim certainty.
+- Do not give financial advice.
+- Decide whether this is worth approving as a small test position.
+- Keep the tone useful, clear, and mildly fun.
+
+Return this exact format:
+
+AI Recommendation: APPROVE or HOLD OFF
+Confidence: 1-10
+Reason: one short paragraph
+Risk: LOW, MEDIUM, or HIGH
+"""
+
+    response = ai.responses.create(
+        model=AI_MODEL,
+        input=prompt
+    )
+
+    return response.output_text.strip()
+
+
+def place_paper_buy(symbol, dollars):
+    price_data = yf.Ticker(symbol).history(period="1d")
+
+    if price_data.empty:
+        raise RuntimeError(f"No price data for {symbol}")
+
+    price = float(price_data["Close"].iloc[-1])
+    qty = round(dollars / price, 4)
+
+    order = MarketOrderRequest(
+        symbol=symbol,
+        qty=qty,
+        side=OrderSide.BUY,
+        time_in_force=TimeInForce.DAY
+    )
+
+    return client.submit_order(order)
+
+def create_pending_approval(symbol, price):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO pending_approvals (
+            created_at,
+            symbol,
+            price,
+            amount,
+            status
+        )
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        datetime.now().isoformat(),
+        symbol,
+        price,
+        DEFAULT_BUY_AMOUNT,
+        "PENDING"
+    ))
+
+    approval_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return approval_id
+
+
+def get_pending_approvals():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+
+    rows = conn.execute("""
+        SELECT *
+        FROM pending_approvals
+        WHERE status='PENDING'
+    """).fetchall()
+
+    conn.close()
+
+    return rows
+
+init_db()
+log_portfolio_snapshot()
+
+print("""
+=================================
+      Trader Joe v1.0 💎🚀
+=================================
+  AI-Assisted Paper Trading
+=================================
+""")
+
+acct = client.get_account()
+clock = client.get_clock()
+
+print(f"Cash Available: ${float(acct.cash):,.2f}")
+print(f"Portfolio Value: ${float(acct.portfolio_value):,.2f}")
+print(f"Market Open: {clock.is_open}")
+print(f"Market Time: {clock.timestamp}")
+print()
+
+print("Open Orders:")
+print("------------")
+
+open_orders = client.get_orders()
+
+if not open_orders:
+    print("No open orders")
+
+for order in open_orders:
+    print(
+        f"{order.symbol:5} "
+        f"{order.side} "
+        f"qty={order.qty} "
+        f"status={order.status}"
+    )
+
+print()
+
+print("Positions:")
+print("----------")
+
+positions = client.get_all_positions()
+
+if not positions:
+    print("No positions")
+
+for p in positions:
+    emoji = "💎" if float(p.unrealized_pl) > 0 else "📉"
+
+    print(
+        f"{emoji} {p.symbol:5} "
+        f"qty={p.qty} "
+        f"value=${float(p.market_value):,.2f} "
+        f"unrealized=${float(p.unrealized_pl):,.2f}"
+    )
+
+print()
+
+for symbol in WATCHLIST:
+    signal, price, sma20, sma50 = get_signal(symbol)
+
+    if price is None:
+        print(f"{symbol}: NO DATA")
+        continue
+
+    print(
+        f"{symbol:5} {signal:4} | "
+        f"Price={price:.2f} "
+        f"SMA20={sma20:.2f} "
+        f"SMA50={sma50:.2f}"
+    )
+
+    if signal != "BUY":
+        continue
+
+    if already_owned(symbol):
+        print("  -> already owned")
+        continue
+
+    if has_open_order(symbol):
+        print("  -> open order already exists")
+        continue
+
+    print("\nAI Analysis:")
+    print("------------")
+
+    try:
+        analysis = ai_analyze(symbol, price, sma20, sma50)
+        print(analysis)
+    except Exception as e:
+        print(f"AI analysis failed: {e}")
+        log_recommendation(symbol, price, sma20, sma50, signal, f"ERROR: {e}", "AI_FAILED", "")
+        continue
+
+    print()
+
+    telegram_message = f"""
+💎 Trader Joe Buy Signal 🚀
+
+Ticker: {symbol}
+Price: ${price:.2f}
+SMA20: {sma20:.2f}
+SMA50: {sma50:.2f}
+
+{analysis}
+
+Reply locally:
+y = buy ${DEFAULT_BUY_AMOUNT}
+<number> = custom amount
+n = skip
+"""
+
+    send_telegram(telegram_message)
+
+    approval_id = create_pending_approval(
+    symbol,
+    price
+)
+
+telegram_message = f"""
+💎 Trader Joe Buy Signal 🚀
+
+Approval ID: {approval_id}
+
+Ticker: {symbol}
+Price: ${price:.2f}
+
+{analysis}
+
+Reply:
+
+{approval_id} y
+{approval_id} 1000
+{approval_id} n
+"""
+
+send_telegram(telegram_message)
+
+print(
+    f"  -> queued approval #{approval_id}"
+)
+    should_buy, buy_amount = parse_buy_amount(answer)
+
+    if not should_buy:
+        print("  -> skipped")
+        log_recommendation(symbol, price, sma20, sma50, signal, analysis, "SKIPPED", "")
+        continue
+
+    allowed, reason = risk_check(symbol, buy_amount)
+
+    if not allowed:
+        print(f"  -> BLOCKED: {reason}")
+        send_telegram(f"⚠️ Trader Joe blocked {symbol}: {reason}")
+        log_recommendation(symbol, price, sma20, sma50, signal, analysis, "BLOCKED", reason)
+        continue
+
+    order = place_paper_buy(symbol, buy_amount)
+
+    print(f"  -> ORDER SUBMITTED ({order.status})")
+
+    send_telegram(f"""
+💰 Trader Joe Order Submitted
+
+Ticker: {symbol}
+Amount: ${buy_amount:,.2f}
+Status: {order.status}
+
+Joe has pressed the big shiny button responsibly.
+""")
+
+    log_recommendation(symbol, price, sma20, sma50, signal, analysis, f"APPROVED ${buy_amount}", str(order.status))
+
+print("\nDone.\n")

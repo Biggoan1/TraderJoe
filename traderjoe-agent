@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export HERMES_HOME="/root/hermes-trader/.hermes-profile"
+exec /usr/local/bin/hermes "$@"

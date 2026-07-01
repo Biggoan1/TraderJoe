@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd /root/hermes-trader
+mkdir -p .hermes-profile/logs
+
+# Stay quiet outside U.S. market hours and on major market holidays.
+if ! ./.venv/bin/python - <<'PY'
+from datetime import date, datetime, timedelta, time
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
+
+
+def nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
+    first = date(year, month, 1)
+    offset = (weekday - first.weekday()) % 7
+    return first + timedelta(days=offset + 7 * (n - 1))
+
+
+def last_weekday(year: int, month: int, weekday: int) -> date:
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+    d = next_month - timedelta(days=1)
+    while d.weekday() != weekday:
+        d -= timedelta(days=1)
+    return d
+
+
+def easter_sunday(year: int) -> date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def observed_fixed_holiday(day: date) -> date:
+    if day.weekday() == 5:
+        return day - timedelta(days=1)
+    if day.weekday() == 6:
+        return day + timedelta(days=1)
+    return day
+
+
+def market_holidays(year: int) -> set[date]:
+    return {
+        observed_fixed_holiday(date(year, 1, 1)),
+        nth_weekday(year, 1, 0, 3),
+        nth_weekday(year, 2, 0, 3),
+        easter_sunday(year) - timedelta(days=2),
+        last_weekday(year, 5, 0),
+        observed_fixed_holiday(date(year, 6, 19)),
+        observed_fixed_holiday(date(year, 7, 4)),
+        nth_weekday(year, 9, 0, 1),
+        nth_weekday(year, 11, 3, 4),
+        observed_fixed_holiday(date(year, 12, 25)),
+    }
+
+now = datetime.now(ET)
+if now.weekday() >= 5:
+    raise SystemExit(1)
+
+if now.date() in (market_holidays(now.year) | market_holidays(now.year - 1) | market_holidays(now.year + 1)):
+    raise SystemExit(1)
+
+market_open = time(9, 30)
+market_close = time(16, 0)
+if not (market_open <= now.time() <= market_close):
+    raise SystemExit(1)
+PY
+then
+  exit 0
+fi
+
+.venv/bin/python trader.py >> .hermes-profile/logs/traderjoe-scan.log 2>&1

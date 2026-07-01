@@ -1,0 +1,1 @@
+/root/hermes-trader/.hermes-profile/scripts/traderjoe_scan.sh

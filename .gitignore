@@ -1,0 +1,17 @@
+.env
+.hermes-profile/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+trades.db
+.hermes/
+.cache/
+*.md.bak
+.backups/
+state.db
+state.db-shm
+state.db-wal
+auth.json
+auth.lock

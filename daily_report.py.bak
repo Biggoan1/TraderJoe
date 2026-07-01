@@ -1,0 +1,149 @@
+import os
+import sqlite3
+from datetime import datetime
+
+import requests
+from dotenv import load_dotenv
+
+load_dotenv(".env")
+
+DB_FILE = "trades.db"
+START_VALUE = 100000.00
+
+
+def send_telegram(message):
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id:
+        print("Telegram not configured.")
+        return
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    response = requests.post(url, json={
+        "chat_id": chat_id,
+        "text": message
+    }, timeout=10)
+
+    print(response.status_code)
+    print(response.text)
+
+
+conn = sqlite3.connect(DB_FILE)
+conn.row_factory = sqlite3.Row
+cur = conn.cursor()
+
+latest_id = cur.execute(
+    "select max(id) from portfolio_snapshots"
+).fetchone()[0]
+
+latest_row = cur.execute(
+    "select created_at from portfolio_snapshots where id = ?",
+    (latest_id,)
+).fetchone()
+
+if not latest_row:
+    print("No portfolio snapshots found.")
+    raise SystemExit()
+
+latest_ts = latest_row["created_at"]
+
+rows = cur.execute("""
+    select *
+    from portfolio_snapshots
+    where created_at = ?
+    order by unrealized_pl desc
+""", (latest_ts,)).fetchall()
+
+trades = cur.execute("""
+    select id, created_at, symbol, user_decision, order_status
+    from recommendations
+    order by id desc
+    limit 10
+""").fetchall()
+
+if not rows:
+    print("No portfolio rows found.")
+    raise SystemExit()
+
+portfolio_value = rows[0]["portfolio_value"]
+cash = rows[0]["cash"]
+total_pl = portfolio_value - START_VALUE
+
+best = rows[0]
+worst = rows[-1]
+
+mood = (
+    "💰 Slightly smug, but still cautious."
+    if total_pl >= 0
+    else "⚠️ Humbled by the market gods."
+)
+
+lines = []
+
+lines.append("=================================")
+lines.append("   Trader Joe Daily Report 💎🚀")
+lines.append("=================================")
+lines.append(f"Report Time: {datetime.now().isoformat(timespec='seconds')}")
+lines.append("")
+lines.append(f"Portfolio Value: ${portfolio_value:,.2f}")
+lines.append(f"Cash Available:  ${cash:,.2f}")
+lines.append(f"Total P/L:       ${total_pl:,.2f}")
+lines.append("")
+lines.append(f"Joe's Mood: {mood}")
+lines.append("")
+lines.append("🏆 Best Position")
+lines.append("----------------")
+lines.append(
+    f"{best['symbol']} "
+    f"${best['unrealized_pl']:,.2f} "
+    f"on ${best['market_value']:,.2f}"
+)
+lines.append("")
+lines.append("📉 Worst Position")
+lines.append("-----------------")
+lines.append(
+    f"{worst['symbol']} "
+    f"${worst['unrealized_pl']:,.2f} "
+    f"on ${worst['market_value']:,.2f}"
+)
+lines.append("")
+lines.append("Positions")
+lines.append("---------")
+
+for r in rows:
+    emoji = "💎" if r["unrealized_pl"] >= 0 else "📉"
+    lines.append(
+        f"{emoji} {r['symbol']:5} "
+        f"value=${r['market_value']:,.2f} "
+        f"p/l=${r['unrealized_pl']:,.2f}"
+    )
+
+lines.append("")
+lines.append("Recent Trades")
+lines.append("-------------")
+
+if not trades:
+    lines.append("No trades logged.")
+else:
+    for t in trades:
+        lines.append(
+            f"{t['id']} | {t['symbol']} | "
+            f"{t['user_decision']} | {t['order_status']}"
+        )
+
+lines.append("")
+lines.append("=================================")
+lines.append("  Joe says: don't get cocky. 😁")
+lines.append("=================================")
+
+report = "\n".join(lines)
+
+print()
+print(report)
+print()
+
+send_telegram(report)
+
+conn.close()
