@@ -25,6 +25,10 @@ from strategy.config import (
     FeatureFlags,
     get_feature_flags,
 )
+from strategy.trade_logger import TradeLogger
+
+# Module-level trade logger — logs all Champion (executed) trades
+trade_logger = TradeLogger()
 
 
 @dataclass

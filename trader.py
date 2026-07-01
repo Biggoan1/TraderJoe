@@ -14,7 +14,7 @@ from alpaca.trading.client import TradingClient
 # --- Champion/Challenger framework ---
 # All feature flags disabled by default → system behaves identically to
 # the codebase before this change. Challenger runs in shadow only.
-from strategy.runner import ChampionChallengerRunner
+from strategy.runner import ChampionChallengerRunner, trade_logger
 
 _cc_runner = ChampionChallengerRunner()
 
@@ -1072,6 +1072,12 @@ else:
 
             try:
                 telegram_approvals.place_paper_sell(pos.symbol, pos_value)
+                # Log the sell to history
+                trade_logger.log_trade_exit(
+                    symbol=pos.symbol,
+                    exit_price=float(price),
+                    exit_reason=', '.join(sell_reasons),
+                )
                 record_cooldown(pos.symbol)
                 telegram_approvals.log_recommendation(
                     pos.symbol, price, "AUTO_SELL", "OrderStatus.SUBMITTED",
@@ -1150,6 +1156,15 @@ else:
                 )
 
                 print(f"\n  Executing ORB: {sym} [{orb['timeframe']}], ${buy_amount:,.2f}")
+                # Log the ORB buy to history
+                trade_logger.log_trade_entry(
+                    symbol=sym,
+                    side="buy",
+                    entry_price=float(orb['entry_price']),
+                    quantity=buy_amount / float(orb['entry_price']),
+                    entry_score=orb.get('score', 0),
+                    market_regime="orb",
+                )
                 telegram_approvals.queue_buy_command(sym, buy_amount)
                 acct = client.get_account()
     else:
@@ -1226,7 +1241,13 @@ else:
             if current_positions >= TARGET_MAX_POSITIONS:
                 weakest = find_weakest_position()
                 if weakest:
-                    print(f"  Over {TARGET_MAX_POSITIONS} positions ({current_positions}). Trimming {weakest['symbol']} (score={weakest['score']:.2f}, P/L=${weakest['pl']:.2f}) to make room.")
+                    # Log the weakest-position sell to history
+                    trade_logger.log_trade_exit(
+                        symbol=weakest['symbol'],
+                        exit_price=float(weakest['entry_price']),
+                        exit_reason="weakest_position_trim",
+                    )
+                    print(f"  Trimming weakest: {weakest['symbol']} (${weakest['market_value']:,.2f})")
                     try:
                         telegram_approvals.place_paper_sell(weakest['symbol'], weakest['market_value'])
                         record_cooldown(weakest['symbol'])
@@ -1258,6 +1279,16 @@ else:
             trade_actions.append(
                 f"🏁 Bought {best_setup['symbol']} @ ${best_setup['price']:.2f} — ${buy_amount:,.2f} "
                 f"(score: {best_setup['score']:.2f}, RSI: {best_setup['rsi']:.1f}, ADX: {best_setup['adx']:.1f})"
+            )
+
+            # Log the buy to history
+            trade_logger.log_trade_entry(
+                symbol=best_setup["symbol"],
+                side="buy",
+                entry_price=float(best_setup["price"]),
+                quantity=buy_amount / float(best_setup["price"]),
+                entry_score=best_setup.get("score", 0),
+                market_regime="setup",
             )
 
             telegram_approvals.queue_buy_command(best_setup["symbol"], buy_amount)
