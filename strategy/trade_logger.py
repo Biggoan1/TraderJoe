@@ -80,6 +80,8 @@ class TradeLogger:
                 market_regime TEXT,
                 active_flags_entry TEXT,
                 active_flags_exit TEXT,
+                rs_at_entry TEXT,
+                rs_at_exit TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -112,6 +114,7 @@ class TradeLogger:
         exit_reason: Optional[str] = None,
         market_regime: Optional[str] = None,
         active_flags: Optional[List[str]] = None,
+        rs_snapshot: Optional[Dict[str, Any]] = None,
     ) -> int:
         """Log a trade entry (buy or sell).
 
@@ -124,12 +127,14 @@ class TradeLogger:
             exit_reason: Not applicable for entry (use None)
             market_regime: Market regime if known
             active_flags: List of active feature flags
+            rs_snapshot: Relative strength snapshot dict (observational only)
 
         Returns:
             Trade ID
         """
         now = datetime.now(timezone.utc).isoformat()
         flags_json = json.dumps(active_flags or [])
+        rs_json = json.dumps(rs_snapshot) if rs_snapshot else None
 
         conn = sqlite3.connect(str(self.db_path))
         cur = conn.cursor()
@@ -141,8 +146,18 @@ class TradeLogger:
                 pl, pl_percent, holding_period_seconds,
                 entry_score, exit_reason, market_regime,
                 active_flags_entry, active_flags_exit,
+                rs_at_entry, rs_at_exit,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, NULL, ?, NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, ?, ?)
+            ) VALUES (
+                ?, ?, ?,
+                NULL,
+                ?, NULL, ?,
+                NULL, NULL, NULL,
+                ?, ?, ?,
+                ?, NULL,
+                ?, NULL,
+                ?, ?
+            )
         """, (
             symbol,
             side,
@@ -153,6 +168,7 @@ class TradeLogger:
             exit_reason,
             market_regime,
             flags_json,
+            rs_json,
             now,
             now,
         ))
@@ -171,6 +187,7 @@ class TradeLogger:
         exit_reason: Optional[str] = None,
         market_regime: Optional[str] = None,
         active_flags: Optional[List[str]] = None,
+        rs_snapshot: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Log a trade exit, closing out an open trade.
 
@@ -183,12 +200,14 @@ class TradeLogger:
             exit_reason: Reason for exit (e.g., 'overbought RSI')
             market_regime: Market regime at exit
             active_flags: List of active feature flags at exit
+            rs_snapshot: Relative strength snapshot at exit (observational only)
 
         Returns:
             Trade dict with calculated P/L, or None if no open trade found
         """
         now = datetime.now(timezone.utc).isoformat()
         flags_json = json.dumps(active_flags or [])
+        rs_json = json.dumps(rs_snapshot) if rs_snapshot else None
 
         conn = sqlite3.connect(str(self.db_path))
         cur = conn.cursor()
@@ -241,6 +260,7 @@ class TradeLogger:
                 exit_reason = ?,
                 market_regime = ?,
                 active_flags_exit = ?,
+                rs_at_exit = ?,
                 updated_at = ?
             WHERE id = ?
         """, (
@@ -252,6 +272,7 @@ class TradeLogger:
             exit_reason,
             market_regime,
             flags_json,
+            rs_json,
             now,
             trade_id,
         ))

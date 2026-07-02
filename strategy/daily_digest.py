@@ -61,6 +61,7 @@ class DailyDigest:
     open_positions: List[OpenPosition] = field(default_factory=list)
     feature_flags: dict = field(default_factory=dict)
     runner_info: dict = field(default_factory=dict)
+    rs_data: Optional[dict] = None
 
 # ---------------------------------------------------------------------------
 # Protocol for Telegram delivery
@@ -92,6 +93,7 @@ class DailyDigestBuilder:
         open_positions: Optional[List[OpenPosition]] = None,
         feature_flags: Optional[dict] = None,
         runner_info: Optional[dict] = None,
+        rs_data: Optional[dict] = None,
     ) -> DailyDigest:
         """Build the full digest."""
         trades = self.logger.get_day_trades(self.date)
@@ -103,6 +105,7 @@ class DailyDigestBuilder:
             open_positions=open_positions or [],
             feature_flags=feature_flags or {},
             runner_info=runner_info or {},
+            rs_data=rs_data,
         )
 
     # ---- internal ---------------------------------------------------------
@@ -216,6 +219,35 @@ class DigestRenderer:
                 for flag, val in active.items():
                     lines.append(f"🔹 {flag}: `{val}`")
                 lines.append("")
+
+        # --- Relative Strength ---
+        if digest.rs_data:
+            lines.append("## *RELATIVE STRENGTH*")
+            lines.append("*(Observational only — not used in trading decisions)*")
+            lines.append("")
+            rs_results = digest.rs_data.get("results", [])
+            if rs_results:
+                # Sort by score descending
+                sorted_results = sorted(rs_results, key=lambda r: r.get("rs_score", 50), reverse=True)
+                for r in sorted_results:
+                    sym = r.get("symbol", "?")
+                    score = r.get("rs_score", 50)
+                    trend = r.get("trend_direction", "stable")
+                    trend_icon = {"improving": "🟢", "declining": "🔴", "stable": "⚪"}.get(trend, "⚪")
+                    line = f"{trend_icon} {sym}: Score {score:.0f} ({trend})"
+                    # Show RS vs benchmarks if available
+                    rs_bench = r.get("rs_vs_benchmark", {})
+                    bench_parts = []
+                    for bench, periods in rs_bench.items():
+                        for period, val in periods.items():
+                            sign = "+" if val >= 0 else ""
+                            bench_parts.append(f"{bench} {period}: {sign}{val:.1f}%")
+                    if bench_parts:
+                        line += f" | {' | '.join(bench_parts)}"
+                    lines.append(line)
+            else:
+                lines.append("No RS data available for today.")
+            lines.append("")
 
         # --- Runner info ---
         if digest.runner_info:

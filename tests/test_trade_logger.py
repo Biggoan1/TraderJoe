@@ -146,6 +146,121 @@ class TestLogTradeEntry:
         )
         assert id1 != id2
 
+    def test_entry_stores_rs_snapshot(self, tmp_db):
+        logger = TradeLogger(db_path=tmp_db)
+        rs_snapshot = {
+            "symbol": "NVDA",
+            "rs_vs_benchmark": {"SPY": {"5d": 2.5, "20d": -1.3, "60d": 5.2}},
+            "rs_score": 75.0,
+            "trend_direction": "improving",
+        }
+        logger.log_trade_entry(
+            symbol="NVDA",
+            side="buy",
+            entry_price=120.00,
+            quantity=100,
+            rs_snapshot=rs_snapshot,
+        )
+        conn = sqlite3.connect(tmp_db)
+        cur = conn.cursor()
+        row = cur.execute("SELECT rs_at_entry FROM trades LIMIT 1").fetchone()
+        conn.close()
+        rs = json.loads(row[0])
+        assert rs["symbol"] == "NVDA"
+        assert rs["rs_score"] == 75.0
+        assert rs["trend_direction"] == "improving"
+
+    def test_entry_rs_snapshot_none_by_default(self, tmp_db):
+        logger = TradeLogger(db_path=tmp_db)
+        logger.log_trade_entry(
+            symbol="AAPL",
+            side="buy",
+            entry_price=150.00,
+            quantity=100,
+        )
+        conn = sqlite3.connect(tmp_db)
+        cur = conn.cursor()
+        row = cur.execute("SELECT rs_at_entry FROM trades LIMIT 1").fetchone()
+        conn.close()
+        assert row[0] is None
+
+
+class TestLogTradeExitRS:
+    """Test RS snapshot storage in trade exits."""
+
+    def test_exit_stores_rs_snapshot(self, tmp_db):
+        logger = TradeLogger(db_path=tmp_db)
+        logger.log_trade_entry(
+            symbol="NVDA",
+            side="buy",
+            entry_price=100.00,
+            quantity=100,
+        )
+        rs_exit = {
+            "symbol": "NVDA",
+            "rs_vs_benchmark": {"SPY": {"5d": 1.2, "20d": 3.5, "60d": 4.0}},
+            "rs_score": 80.0,
+            "trend_direction": "improving",
+        }
+        result = logger.log_trade_exit(
+            symbol="NVDA",
+            exit_price=110.00,
+            exit_reason="target reached",
+            rs_snapshot=rs_exit,
+        )
+        assert result is not None
+        assert result["rs_at_exit"] is not None
+        rs = json.loads(result["rs_at_exit"])
+        assert rs["rs_score"] == 80.0
+
+    def test_exit_preserves_entry_rs(self, tmp_db):
+        logger = TradeLogger(db_path=tmp_db)
+        rs_entry = {
+            "symbol": "NVDA",
+            "rs_score": 60.0,
+            "trend_direction": "stable",
+        }
+        logger.log_trade_entry(
+            symbol="NVDA",
+            side="buy",
+            entry_price=100.00,
+            quantity=100,
+            rs_snapshot=rs_entry,
+        )
+        logger.log_trade_exit(
+            symbol="NVDA",
+            exit_price=110.00,
+            exit_reason="target reached",
+        )
+        conn = sqlite3.connect(tmp_db)
+        cur = conn.cursor()
+        row = cur.execute("SELECT rs_at_entry, rs_at_exit FROM trades LIMIT 1").fetchone()
+        conn.close()
+        assert json.loads(row[0])["rs_score"] == 60.0
+        assert row[1] is None
+
+    def test_exit_rs_both_entry_and_exit(self, tmp_db):
+        logger = TradeLogger(db_path=tmp_db)
+        rs_entry = {"rs_score": 65.0, "trend_direction": "stable"}
+        rs_exit = {"rs_score": 72.0, "trend_direction": "improving"}
+        logger.log_trade_entry(
+            symbol="TSLA",
+            side="buy",
+            entry_price=200.00,
+            quantity=50,
+            rs_snapshot=rs_entry,
+        )
+        result = logger.log_trade_exit(
+            symbol="TSLA",
+            exit_price=210.00,
+            rs_snapshot=rs_exit,
+        )
+        assert result is not None
+        entry_rs = json.loads(result["rs_at_entry"])
+        exit_rs = json.loads(result["rs_at_exit"])
+        assert entry_rs["rs_score"] == 65.0
+        assert exit_rs["rs_score"] == 72.0
+
 
 class TestLogTradeExit:
     """Test logging trade exits."""

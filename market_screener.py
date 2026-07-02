@@ -20,6 +20,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yfinance as yf
 
+from strategy.relative_strength import RelativeStrengthCalculator
+
 ET = ZoneInfo("America/New_York")
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trades.db")
 TRENDING_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trending_watchlist.json")
@@ -301,6 +303,27 @@ def run_screener():
     # Top trending (not on manual watchlist, qualified)
     trending = [r for r in qualified if not r["on_manual_watchlist"] and not r["owned"] and not r["on_cooldown"]]
     
+    # Relative Strength analysis (observational only — does NOT influence scoring)
+    # Calculate RS for qualified and trending symbols
+    rs_symbols = [r["symbol"] for r in qualified] or [r["symbol"] for r in results[:20]]
+    rs_results = {}
+    if rs_symbols:
+        try:
+            calc = RelativeStrengthCalculator()
+            for rs_result in calc.calculate_watchlist_rs(rs_symbols):
+                rs_results[rs_result.symbol] = rs_result.to_dict()
+            print(f"RS analysis complete for {len(rs_results)} symbols (observational only)")
+        except Exception as e:
+            print(f"RS analysis skipped: {e}")
+
+    # Add RS data to each result (observational only)
+    for r in results:
+        sym = r["symbol"]
+        if sym in rs_results:
+            r["rs_data"] = rs_results[sym]
+        else:
+            r["rs_data"] = None
+    
     # Save trending watchlist
     trending_data = {
         "timestamp": timestamp,
@@ -328,14 +351,29 @@ def run_screener():
             f.write(f"{'-'*60}\n")
             for r in trending[:10]:
                 gate_str = "+".join(k[:2] for k, v in r["gates"].items() if v)
-                f.write(f"  {r['symbol']:8s} ${r['price']:>10,.2f}  score={r['score']:5.1f}  gates={r['gate_count']}/6  RSI={r['rsi']:5.1f}  ADX={r['adx']:5.1f}  5d={r['pct_change_5d']:+.1f}%  [{gate_str}]\n")
-        
+                rs_line = ""
+                if r.get("rs_data"):
+                    rs = r["rs_data"]
+                    score = rs.get("rs_score", 0)
+                    trend = rs.get("trend_direction", "stable")
+                    rs_line = f"  RS={score:.0f}({trend})"
+                f.write(f"  {r['symbol']:8s} ${r['price']:>10,.2f}  score={r['score']:5.1f}  gates={r['gate_count']}/6  RSI={r['rsi']:5.1f}  ADX={r['adx']:5.1f}  5d={r['pct_change_5d']:+.1f}%  [{gate_str}]{rs_line}\n")
+    
         f.write(f"\nALL QUALIFIED:\n")
         f.write(f"{'-'*60}\n")
         for r in qualified[:20]:
             wl_tag = " (watched)" if r["on_manual_watchlist"] else (" (owned)" if r["owned"] else " NEW")
             gate_str = "+".join(k[:2] for k, v in r["gates"].items() if v)
-            f.write(f"  {r['symbol']:8s} ${r['price']:>10,.2f}  score={r['score']:5.1f}  gates={r['gate_count']}/6  RSI={r['rsi']:5.1f}  ADX={r['adx']:5.1f}  5d={r['pct_change_5d']:+.1f}%  [{gate_str}]{wl_tag}\n")
+            rs_line = ""
+            if r.get("rs_data"):
+                rs = r["rs_data"]
+                score = rs.get("rs_score", 0)
+                trend = rs.get("trend_direction", "stable")
+                rs_vs_spy = rs.get("rs_vs_benchmark", {}).get("SPY", {})
+                spy_5d = rs_vs_spy.get("5d", 0)
+                spy_20d = rs_vs_spy.get("20d", 0)
+                rs_line = f"  RS={score:.0f}({trend})  SPY_5d={spy_5d:+.1f}%  SPY_20d={spy_20d:+.1f}%"
+            f.write(f"  {r['symbol']:8s} ${r['price']:>10,.2f}  score={r['score']:5.1f}  gates={r['gate_count']}/6  RSI={r['rsi']:5.1f}  ADX={r['adx']:5.1f}  5d={r['pct_change_5d']:+.1f}%  [{gate_str}]{wl_tag}{rs_line}\n")
 
         if failed:
             f.write(f"\nFAILED ({len(failed)} symbols):\n")
