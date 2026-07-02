@@ -16,3 +16,4 @@ state.db-wal
 auth.json
 auth.lock
 trades_history.db
+reports/
