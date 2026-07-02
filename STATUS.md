@@ -6,15 +6,15 @@
 - Challenger: none
 
 ## Sprint
-- Current: 8 (Enhanced Daily Digest + Trade Metadata, Review)
-- Last completed: 7
+- Current: 9 (Sector Leadership Tracking, Ready)
+- Last completed: 8
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: TBD (Sprint 8 commit)
+- Commit: TBD (Sprint 8 validation commit)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Sprint 8 implemented, awaiting validation
+- Status: clean after Sprint 8 validation commit
 
 ## Testing
 - Tests passing: 348
@@ -39,4 +39,4 @@
 ## Phase
 - Current: 2 (Market Intelligence)
 - Phase 1: complete
-- Phase 2: in progress (3/6 complete, Sprint 8 in Review)
+- Phase 2: in progress (4/6 complete)

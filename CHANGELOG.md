@@ -8,7 +8,8 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
+**Commit:** c60f807
 
 ### Added
 - `DigestMetadataSummary` for observational trade metadata aggregation
@@ -38,7 +39,7 @@ Trader Joe release history.
 ### Notes
 - Observational only — zero impact on trading decisions
 - No buy/sell logic, scheduler behavior, or feature flags changed
-- Card `t_194b8638` moved to Review pending validation
+- Card `t_194b8638` validated and moved to Done
 
 ---
 
