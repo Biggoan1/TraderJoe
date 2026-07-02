@@ -6,15 +6,15 @@
 - Challenger: none
 
 ## Sprint
-- Current: 7 (Morning Intelligence Agent, Review)
-- Last completed: 6
+- Current: 8 (Enhanced Daily Digest + Trade Metadata, Ready)
+- Last completed: 7
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: TBD (Sprint 7 commit)
+- Commit: TBD (Sprint 7 validation commit)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Sprint 7 implemented, awaiting validation
+- Status: clean after Sprint 7 validation commit
 
 ## Testing
 - Tests passing: 339
@@ -39,4 +39,4 @@
 ## Phase
 - Current: 2 (Market Intelligence)
 - Phase 1: complete
-- Phase 2: in progress (2/6 complete, Sprint 7 in Review)
+- Phase 2: in progress (3/6 complete)

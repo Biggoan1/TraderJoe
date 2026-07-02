@@ -8,7 +8,8 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
+**Commit:** c1ed907
 
 ### Added
 - `strategy/morning_intelligence.py` — Observational pre-market briefing agent
@@ -31,7 +32,7 @@ Trader Joe release history.
 ### Notes
 - Observational only — zero impact on trading decisions
 - No scheduler, Telegram, buy/sell, ranking, or strategy behavior changes
-- Card `t_909faeab` moved to Review pending validation
+- Card `t_909faeab` validated and moved to Done
 
 ---
 
