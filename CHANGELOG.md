@@ -4,6 +4,37 @@ Trader Joe release history.
 
 ---
 
+## v0.7.0 — Sprint 7: Morning Intelligence Agent
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+
+### Added
+- `strategy/morning_intelligence.py` — Observational pre-market briefing agent
+- Composes existing market regime, overnight risk, and relative strength data
+- `MorningIntelligenceReport` structured output with JSON serialization
+- `MorningIntelligenceRenderer` Markdown output for review/delivery workflows
+- Provider injection for deterministic tests and future scheduler integration
+- Feature flag recording: `enable_morning_intelligence` remains disabled by default
+
+### Tests
+- `tests/test_morning_intelligence.py` — 19 tests covering:
+  - Report serialization
+  - Markdown rendering
+  - Mocked provider aggregation
+  - Feature flag recording
+  - Empty watchlist and provider failure handling
+  - Observational-only guarantees
+- 339 passing total (0 failures)
+
+### Notes
+- Observational only — zero impact on trading decisions
+- No scheduler, Telegram, buy/sell, ranking, or strategy behavior changes
+- Card `t_909faeab` moved to Review pending validation
+
+---
+
 ## v0.6.0 — Sprint 6: Overnight Risk Engine
 
 **Date:** 2026-07-02

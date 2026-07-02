@@ -100,6 +100,20 @@ It must remain accurate at all times.
   - Config-backed gap threshold with mocked PriceFetcher coverage
   - Runner stubs added (observational only)
 
+### Sprint 7: Morning Intelligence Agent
+- **Date:** 2026-07-02
+- **Commit:** TBD
+- **Branch:** sprint-3/daily-digest
+- **Tests:** 339 passing (19 morning intelligence + 320 existing)
+- **Behavior change:** No
+- **Feature flags enabled:** None
+- **Status:** Review
+- **Summary:**
+  - Pre-market context report from market regime, overnight risk, and relative strength
+  - Structured JSON-ready report plus Markdown renderer
+  - Provider injection for deterministic tests and future scheduler integration
+  - Purely observational — no trading signals, no behavior change
+
 ### Kanban Board
 
 Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
@@ -108,10 +122,10 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 
 | # | Card | Sprint | Status |
 |---|---|---|---|
-| `t_909faeab` | Sprint 7: Morning Intelligence Agent | Phase 2 | In Progress |
-| `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Blocked (→ S7) |
-| `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Blocked (→ S8) |
-| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Blocked (→ S9) |
+| `t_909faeab` | Sprint 7: Morning Intelligence Agent | Phase 2 | Review |
+| `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Blocked (-> S7 validation) |
+| `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Blocked (-> S8) |
+| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Blocked (-> S9) |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
 
@@ -203,5 +217,5 @@ Never implement multiple behavior-changing features in a single sprint.
 
 ## Current Sprint
 
-**Completed:** Sprint 6 — Overnight Risk Engine (Phase 2)
-**Next:** Sprint 7 — Morning Intelligence Agent (Phase 2)
+**In Review:** Sprint 7 — Morning Intelligence Agent (Phase 2)
+**Next:** Sprint 8 — Enhanced Daily Digest + Trade Metadata (after Sprint 7 validation)

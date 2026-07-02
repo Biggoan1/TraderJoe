@@ -46,4 +46,11 @@ Every card must satisfy ALL of the following before moving to **Review**:
 
 ## Board State
 
-Run `hermes kanban list` for live state.
+Hermes is not orchestrating this work item. Current repository snapshot:
+
+| # | Card | Sprint | Status |
+|---|---|---|---|
+| `t_909faeab` | Sprint 7: Morning Intelligence Agent | Phase 2 | Review |
+| `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Blocked (-> S7 validation) |
+| `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Blocked (-> S8) |
+| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Blocked (-> S9) |

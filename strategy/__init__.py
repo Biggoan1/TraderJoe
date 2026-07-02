@@ -37,6 +37,10 @@ from strategy.runner import (
     EvaluationResult,
     SetupResult,
 )
+from strategy.morning_intelligence import (
+    MorningIntelligenceAgent,
+    MorningIntelligenceReport,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -44,5 +48,7 @@ __all__ = [
     "reset_feature_flags",
     "ChampionChallengerRunner",
     "EvaluationResult",
+    "MorningIntelligenceAgent",
+    "MorningIntelligenceReport",
     "SetupResult",
 ]
