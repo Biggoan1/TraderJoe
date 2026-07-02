@@ -17,3 +17,6 @@ auth.json
 auth.lock
 trades_history.db
 reports/
+screener_log.txt
+trending_watchlist.json
+status.md
