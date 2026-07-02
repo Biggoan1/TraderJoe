@@ -4,7 +4,6 @@ import json
 import os
 import sqlite3
 import tempfile
-import shutil
 from pathlib import Path
 
 import pytest
@@ -57,6 +56,45 @@ class TestTradeLoggerInit:
         assert "idx_trades_side" in index_names
         assert "idx_trades_entry_time" in index_names
         assert "idx_trades_exit_time" in index_names
+
+    def test_migrates_existing_database_with_missing_metadata_columns(self, tmp_db):
+        conn = sqlite3.connect(tmp_db)
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                entry_time TEXT NOT NULL,
+                exit_time TEXT,
+                entry_price REAL NOT NULL,
+                exit_price REAL,
+                quantity REAL NOT NULL,
+                pl REAL,
+                pl_percent REAL,
+                holding_period_seconds REAL,
+                entry_score REAL,
+                exit_reason TEXT,
+                market_regime TEXT,
+                active_flags_entry TEXT,
+                active_flags_exit TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+        TradeLogger(db_path=tmp_db)
+
+        conn = sqlite3.connect(tmp_db)
+        cur = conn.cursor()
+        columns = {row[1] for row in cur.execute("PRAGMA table_info(trades)").fetchall()}
+        conn.close()
+        assert "rs_at_entry" in columns
+        assert "rs_at_exit" in columns
+        assert "trade_metadata_entry" in columns
+        assert "trade_metadata_exit" in columns
 
 
 class TestLogTradeEntry:
@@ -184,6 +222,23 @@ class TestLogTradeEntry:
         conn.close()
         assert row[0] is None
 
+    def test_entry_stores_trade_metadata(self, tmp_db):
+        logger = TradeLogger(db_path=tmp_db)
+        logger.log_trade_entry(
+            symbol="AAPL",
+            side="buy",
+            entry_price=150.00,
+            quantity=100,
+            metadata={"setup_type": "orb", "watchlist_rank": 2},
+        )
+        conn = sqlite3.connect(tmp_db)
+        cur = conn.cursor()
+        row = cur.execute("SELECT trade_metadata_entry FROM trades LIMIT 1").fetchone()
+        conn.close()
+        metadata = json.loads(row[0])
+        assert metadata["setup_type"] == "orb"
+        assert metadata["watchlist_rank"] == 2
+
 
 class TestLogTradeExitRS:
     """Test RS snapshot storage in trade exits."""
@@ -260,6 +315,25 @@ class TestLogTradeExitRS:
         exit_rs = json.loads(result["rs_at_exit"])
         assert entry_rs["rs_score"] == 65.0
         assert exit_rs["rs_score"] == 72.0
+
+    def test_exit_stores_trade_metadata(self, tmp_db):
+        logger = TradeLogger(db_path=tmp_db)
+        logger.log_trade_entry(
+            symbol="TSLA",
+            side="buy",
+            entry_price=200.00,
+            quantity=50,
+        )
+        result = logger.log_trade_exit(
+            symbol="TSLA",
+            exit_price=210.00,
+            metadata={"exit_signal": "target", "slippage_pct": 0.1},
+        )
+
+        assert result is not None
+        metadata = json.loads(result["trade_metadata_exit"])
+        assert metadata["exit_signal"] == "target"
+        assert metadata["slippage_pct"] == 0.1
 
 
 class TestLogTradeExit:
@@ -559,3 +633,29 @@ class TestExportJSONL:
         with open(output) as f:
             trade = json.loads(f.readline())
         assert trade["active_flags_entry"] == ["flag_x"]
+
+    def test_export_parses_rs_and_metadata(self, tmp_db):
+        logger = TradeLogger(db_path=tmp_db)
+        logger.log_trade_entry(
+            symbol="A",
+            side="buy",
+            entry_price=100.0,
+            quantity=10,
+            rs_snapshot={"symbol": "A", "rs_score": 70.0},
+            metadata={"setup_type": "breakout"},
+        )
+        logger.log_trade_exit(
+            symbol="A",
+            exit_price=110.0,
+            rs_snapshot={"symbol": "A", "rs_score": 82.0},
+            metadata={"exit_signal": "target"},
+        )
+
+        output = logger.export_jsonl()
+        with open(output) as f:
+            trade = json.loads(f.readline())
+
+        assert trade["rs_at_entry"]["rs_score"] == 70.0
+        assert trade["rs_at_exit"]["rs_score"] == 82.0
+        assert trade["trade_metadata_entry"]["setup_type"] == "breakout"
+        assert trade["trade_metadata_exit"]["exit_signal"] == "target"

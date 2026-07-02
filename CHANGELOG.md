@@ -4,6 +4,44 @@ Trader Joe release history.
 
 ---
 
+## v0.8.0 — Sprint 8: Enhanced Daily Digest + Trade Metadata
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+
+### Added
+- `DigestMetadataSummary` for observational trade metadata aggregation
+- Daily Digest metadata sections for symbols, exit reasons, market context,
+  active flags, entry scores, custom metadata, and RS snapshots
+- Optional `metadata` payloads on `TradeLogger.log_trade_entry()` and
+  `TradeLogger.log_trade_exit()`
+- SQLite migration for nullable `trade_metadata_entry` and
+  `trade_metadata_exit` columns
+- JSONL export parsing for RS snapshots and custom metadata payloads
+- `rs_data` passthrough in `DailyDigestService.generate_and_deliver()`
+
+### Changed
+- Digest stats now preserve the requested report date
+- Trade details render both legacy digest keys and TradeLogger row keys
+
+### Tests
+- 9 new/updated tests covering:
+  - Metadata summary aggregation
+  - Malformed metadata handling
+  - Digest metadata and RS snapshot rendering
+  - TradeLogger metadata storage and export
+  - Existing database migration
+  - Service RS data passthrough
+- 348 passing total (0 failures)
+
+### Notes
+- Observational only — zero impact on trading decisions
+- No buy/sell logic, scheduler behavior, or feature flags changed
+- Card `t_194b8638` moved to Review pending validation
+
+---
+
 ## v0.7.0 — Sprint 7: Morning Intelligence Agent
 
 **Date:** 2026-07-02

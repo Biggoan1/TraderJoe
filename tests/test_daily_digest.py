@@ -12,6 +12,7 @@ from strategy.daily_digest import (
     DigestSaver,
     DailyDigestService,
     DigestStats,
+    DigestMetadataSummary,
     DailyDigest,
     OpenPosition,
 )
@@ -94,8 +95,72 @@ class TestDailyDigestBuilder:
             assert digest.stats.win_rate == 60.0
             # 50 - 30 + 80 + 40 - 20 = 120
             assert digest.stats.daily_pl == 120.0
+            assert digest.stats.date == date
         finally:
             os.unlink(path)
+
+    def test_build_metadata_summary_from_trade_logger_rows(self):
+        logger, path = _make_logger()
+        try:
+            date = _utc_today()
+            rs_entry = {"symbol": "AAPL", "rs_score": 72.0, "trend_direction": "improving"}
+            rs_exit = {"symbol": "AAPL", "rs_score": 81.0, "trend_direction": "improving"}
+            logger.log_trade_entry(
+                "AAPL",
+                "buy",
+                100.0,
+                10,
+                entry_score=8.0,
+                market_regime="bullish",
+                active_flags=["enable_relative_strength"],
+                rs_snapshot=rs_entry,
+                metadata={"setup_type": "orb", "watchlist_rank": 1},
+            )
+            logger.log_trade_exit(
+                "AAPL",
+                110.0,
+                "target",
+                market_regime="bullish",
+                active_flags=["enable_relative_strength"],
+                rs_snapshot=rs_exit,
+                metadata={"exit_signal": "target"},
+            )
+
+            builder = DailyDigestBuilder(logger, date=date)
+            digest = builder.build()
+            meta = digest.metadata_summary
+
+            assert meta.symbols_traded == ["AAPL"]
+            assert meta.exit_reason_counts == {"target": 1}
+            assert meta.market_regime_counts == {"bullish": 1}
+            assert meta.active_flag_counts == {"enable_relative_strength": 2}
+            assert meta.avg_entry_score == 8.0
+            assert meta.trades_with_entry_rs == 1
+            assert meta.trades_with_exit_rs == 1
+            assert meta.trades_with_metadata == 1
+            assert meta.strongest_rs_symbol == "AAPL"
+            assert meta.strongest_rs_score == 81.0
+        finally:
+            os.unlink(path)
+
+    def test_metadata_summary_handles_malformed_json(self):
+        trades = [
+            {
+                "symbol": "BAD",
+                "exit_price": 10.0,
+                "active_flags_entry": "{bad-json",
+                "rs_at_entry": "[not-a-dict]",
+                "trade_metadata_entry": "{bad-json",
+            }
+        ]
+
+        meta = DailyDigestBuilder._compute_metadata_summary(trades)
+
+        assert meta.symbols_traded == ["BAD"]
+        assert meta.missing_exit_reasons == 1
+        assert meta.active_flag_counts == {}
+        assert meta.trades_with_entry_rs == 0
+        assert meta.trades_with_metadata == 0
 
     def test_build_with_open_positions(self):
         logger, path = _make_logger()
@@ -400,6 +465,84 @@ class TestDigestRenderer:
 
         assert "2.0h" in content
 
+    def test_render_metadata_summary(self):
+        stats = DigestStats(
+            date="2025-01-15",
+            total_trades=1,
+            closed_trades=1,
+            wins=1,
+            losses=0,
+            win_rate=100.0,
+            daily_pl=50.0,
+            avg_winner=50.0,
+            avg_loser=0.0,
+            profit_factor=50.0,
+            best_trade_pl=50.0,
+            worst_trade_pl=50.0,
+        )
+        meta = DigestMetadataSummary(
+            symbols_traded=["AAPL"],
+            exit_reason_counts={"target": 1},
+            market_regime_counts={"bullish": 1},
+            active_flag_counts={"enable_relative_strength": 2},
+            avg_entry_score=8.0,
+            trades_with_entry_rs=1,
+            trades_with_exit_rs=1,
+            trades_with_metadata=1,
+            strongest_rs_symbol="AAPL",
+            strongest_rs_score=82.0,
+            weakest_rs_symbol="AAPL",
+            weakest_rs_score=72.0,
+        )
+        digest = DailyDigest(
+            stats=stats,
+            trades=[{"symbol": "AAPL", "side": "buy", "entry_price": 100.0, "quantity": 10}],
+            metadata_summary=meta,
+        )
+        content = DigestRenderer.render(digest)
+
+        assert "TRADE METADATA" in content
+        assert "Observational only" in content
+        assert "Avg Entry Score" in content
+        assert "RELATIVE STRENGTH SNAPSHOTS" in content
+        assert "Strongest: AAPL" in content
+
+    def test_render_trade_details_supports_trade_logger_keys(self):
+        stats = DigestStats(
+            date="2025-01-15",
+            total_trades=1,
+            closed_trades=1,
+            wins=1,
+            losses=0,
+            win_rate=100.0,
+            daily_pl=50.0,
+            avg_winner=50.0,
+            avg_loser=0.0,
+            profit_factor=50.0,
+            best_trade_pl=50.0,
+            worst_trade_pl=50.0,
+        )
+        digest = DailyDigest(
+            stats=stats,
+            trades=[
+                {
+                    "symbol": "AAPL",
+                    "side": "buy",
+                    "entry_price": 100.0,
+                    "exit_price": 105.0,
+                    "quantity": 10,
+                    "pl": 50.0,
+                    "entry_score": 8.0,
+                    "holding_period_seconds": 90,
+                }
+            ],
+        )
+        content = DigestRenderer.render(digest)
+
+        assert "10 @ $100.00" in content
+        assert "Score: 8.0" in content
+        assert "Held: 90s" in content
+
 # ---------------------------------------------------------------------------
 # Saver tests
 # ---------------------------------------------------------------------------
@@ -516,6 +659,30 @@ class TestDailyDigestService:
             assert "NVDA" in content
             assert "champion_mode" in content
             assert "watchlist_size" in content
+            assert os.path.exists(filepath)
+        finally:
+            os.unlink(path)
+
+    def test_generate_and_deliver_passes_rs_data(self):
+        logger, path = _make_logger()
+        try:
+            date = _utc_today()
+            _seed_trades(logger, date)
+            rs_data = {
+                "results": [
+                    {
+                        "symbol": "AAPL",
+                        "rs_score": 82.0,
+                        "trend_direction": "improving",
+                    }
+                ]
+            }
+
+            service = DailyDigestService(logger, telegram_sender=None)
+            content, filepath = service.generate_and_deliver(date=date, rs_data=rs_data)
+
+            assert "RELATIVE STRENGTH" in content
+            assert "AAPL: Score 82" in content
             assert os.path.exists(filepath)
         finally:
             os.unlink(path)

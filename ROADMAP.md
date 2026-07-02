@@ -114,6 +114,21 @@ It must remain accurate at all times.
   - Provider injection for deterministic tests and future scheduler integration
   - Purely observational — no trading signals, no behavior change
 
+### Sprint 8: Enhanced Daily Digest + Trade Metadata
+- **Date:** 2026-07-02
+- **Commit:** TBD
+- **Branch:** sprint-3/daily-digest
+- **Tests:** 348 passing (9 new/updated digest and metadata tests + 339 existing)
+- **Behavior change:** No
+- **Feature flags enabled:** None
+- **Status:** Review
+- **Summary:**
+  - Daily digest now summarizes observational trade metadata
+  - TradeLogger captures optional entry/exit metadata payloads
+  - SQLite migration adds nullable metadata columns for existing databases
+  - Digest renders exit reasons, market context, flags, entry scores, and RS snapshots
+  - Digest date now respects the requested report date
+
 ### Kanban Board
 
 Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
@@ -123,7 +138,7 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | # | Card | Sprint | Status |
 |---|---|---|---|
 | `t_909faeab` | Sprint 7: Morning Intelligence Agent | Phase 2 | Done |
-| `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Ready |
+| `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Review |
 | `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Blocked (-> S8) |
 | `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Blocked (-> S9) |
 
@@ -217,5 +232,5 @@ Never implement multiple behavior-changing features in a single sprint.
 
 ## Current Sprint
 
-**Completed:** Sprint 7 — Morning Intelligence Agent (Phase 2)
-**Next:** Sprint 8 — Enhanced Daily Digest + Trade Metadata (Phase 2)
+**In Review:** Sprint 8 — Enhanced Daily Digest + Trade Metadata (Phase 2)
+**Next:** Sprint 9 — Sector Leadership Tracking (after Sprint 8 validation)

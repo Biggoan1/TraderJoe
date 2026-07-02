@@ -82,10 +82,16 @@ class TradeLogger:
                 active_flags_exit TEXT,
                 rs_at_entry TEXT,
                 rs_at_exit TEXT,
+                trade_metadata_entry TEXT,
+                trade_metadata_exit TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
         """)
+        self._ensure_column(cur, "rs_at_entry", "TEXT")
+        self._ensure_column(cur, "rs_at_exit", "TEXT")
+        self._ensure_column(cur, "trade_metadata_entry", "TEXT")
+        self._ensure_column(cur, "trade_metadata_exit", "TEXT")
 
         # Indexes for fast lookups
         cur.execute("""
@@ -104,6 +110,15 @@ class TradeLogger:
         conn.commit()
         conn.close()
 
+    @staticmethod
+    def _ensure_column(cur: sqlite3.Cursor, column_name: str, column_type: str) -> None:
+        """Add a nullable column for older trade databases."""
+        columns = {
+            row[1] for row in cur.execute("PRAGMA table_info(trades)").fetchall()
+        }
+        if column_name not in columns:
+            cur.execute(f"ALTER TABLE trades ADD COLUMN {column_name} {column_type}")
+
     def log_trade_entry(
         self,
         symbol: str,
@@ -115,6 +130,7 @@ class TradeLogger:
         market_regime: Optional[str] = None,
         active_flags: Optional[List[str]] = None,
         rs_snapshot: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> int:
         """Log a trade entry (buy or sell).
 
@@ -128,6 +144,7 @@ class TradeLogger:
             market_regime: Market regime if known
             active_flags: List of active feature flags
             rs_snapshot: Relative strength snapshot dict (observational only)
+            metadata: Additional observational trade context
 
         Returns:
             Trade ID
@@ -135,6 +152,7 @@ class TradeLogger:
         now = datetime.now(timezone.utc).isoformat()
         flags_json = json.dumps(active_flags or [])
         rs_json = json.dumps(rs_snapshot) if rs_snapshot else None
+        metadata_json = json.dumps(metadata) if metadata else None
 
         conn = sqlite3.connect(str(self.db_path))
         cur = conn.cursor()
@@ -147,6 +165,7 @@ class TradeLogger:
                 entry_score, exit_reason, market_regime,
                 active_flags_entry, active_flags_exit,
                 rs_at_entry, rs_at_exit,
+                trade_metadata_entry, trade_metadata_exit,
                 created_at, updated_at
             ) VALUES (
                 ?, ?, ?,
@@ -154,6 +173,7 @@ class TradeLogger:
                 ?, NULL, ?,
                 NULL, NULL, NULL,
                 ?, ?, ?,
+                ?, NULL,
                 ?, NULL,
                 ?, NULL,
                 ?, ?
@@ -169,6 +189,7 @@ class TradeLogger:
             market_regime,
             flags_json,
             rs_json,
+            metadata_json,
             now,
             now,
         ))
@@ -188,6 +209,7 @@ class TradeLogger:
         market_regime: Optional[str] = None,
         active_flags: Optional[List[str]] = None,
         rs_snapshot: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Log a trade exit, closing out an open trade.
 
@@ -201,6 +223,7 @@ class TradeLogger:
             market_regime: Market regime at exit
             active_flags: List of active feature flags at exit
             rs_snapshot: Relative strength snapshot at exit (observational only)
+            metadata: Additional observational trade context at exit
 
         Returns:
             Trade dict with calculated P/L, or None if no open trade found
@@ -208,6 +231,7 @@ class TradeLogger:
         now = datetime.now(timezone.utc).isoformat()
         flags_json = json.dumps(active_flags or [])
         rs_json = json.dumps(rs_snapshot) if rs_snapshot else None
+        metadata_json = json.dumps(metadata) if metadata else None
 
         conn = sqlite3.connect(str(self.db_path))
         cur = conn.cursor()
@@ -261,6 +285,7 @@ class TradeLogger:
                 market_regime = ?,
                 active_flags_exit = ?,
                 rs_at_exit = ?,
+                trade_metadata_exit = ?,
                 updated_at = ?
             WHERE id = ?
         """, (
@@ -273,6 +298,7 @@ class TradeLogger:
             market_regime,
             flags_json,
             rs_json,
+            metadata_json,
             now,
             trade_id,
         ))
@@ -629,6 +655,26 @@ class TradeLogger:
                 if trade.get("active_flags_exit"):
                     try:
                         trade["active_flags_exit"] = json.loads(trade["active_flags_exit"])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                if trade.get("rs_at_entry"):
+                    try:
+                        trade["rs_at_entry"] = json.loads(trade["rs_at_entry"])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                if trade.get("rs_at_exit"):
+                    try:
+                        trade["rs_at_exit"] = json.loads(trade["rs_at_exit"])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                if trade.get("trade_metadata_entry"):
+                    try:
+                        trade["trade_metadata_entry"] = json.loads(trade["trade_metadata_entry"])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                if trade.get("trade_metadata_exit"):
+                    try:
+                        trade["trade_metadata_exit"] = json.loads(trade["trade_metadata_exit"])
                     except (json.JSONDecodeError, TypeError):
                         pass
                 f.write(json.dumps(trade) + "\n")
