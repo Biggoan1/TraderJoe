@@ -144,11 +144,29 @@ class SectorLeadershipData:
 
 
 @dataclass
+class MarketBreadthData:
+    """Market breadth context."""
+    breadth_score: float = 50.0
+    breadth_regime: str = "missing"
+    above_ma_percentages: Dict[str, float] = field(default_factory=dict)
+    advance_decline_ratio: float = 0.0
+    advancing_count: int = 0
+    declining_count: int = 0
+    unchanged_count: int = 0
+    new_high_count: int = 0
+    new_low_count: int = 0
+    all_symbols: List[Dict[str, Any]] = field(default_factory=list)
+    data_quality: str = "missing"
+    timestamp: str = ""
+
+
+@dataclass
 class MarketIntelligenceData:
     """Aggregated market intelligence."""
     regime: MarketRegimeData = field(default_factory=MarketRegimeData)
     relative_strength: RelativeStrengthData = field(default_factory=RelativeStrengthData)
     sector_leadership: SectorLeadershipData = field(default_factory=SectorLeadershipData)
+    market_breadth: MarketBreadthData = field(default_factory=MarketBreadthData)
     timestamp: str = ""
 
 
@@ -302,6 +320,12 @@ class ResearchPlatform:
         # Sector leadership
         try:
             intelligence.sector_leadership = self._fetch_sector_leadership()
+        except Exception:
+            pass
+
+        # Market breadth
+        try:
+            intelligence.market_breadth = self._fetch_market_breadth()
         except Exception:
             pass
 
@@ -510,6 +534,35 @@ class ResearchPlatform:
             pass
 
         return sector_data
+
+    def _fetch_market_breadth(self) -> MarketBreadthData:
+        """Fetch current market breadth context."""
+        breadth_data = MarketBreadthData()
+        breadth_data.timestamp = datetime.now(timezone.utc).isoformat()
+
+        try:
+            from strategy.market_breadth import MarketBreadthAnalyzer
+
+            report = MarketBreadthAnalyzer().analyze()
+            breadth_data.breadth_score = report.breadth_score
+            breadth_data.breadth_regime = report.breadth_regime
+            breadth_data.above_ma_percentages = dict(report.above_ma_percentages)
+            breadth_data.advance_decline_ratio = report.advance_decline_ratio
+            breadth_data.advancing_count = report.advancing_count
+            breadth_data.declining_count = report.declining_count
+            breadth_data.unchanged_count = report.unchanged_count
+            breadth_data.new_high_count = report.new_high_count
+            breadth_data.new_low_count = report.new_low_count
+            breadth_data.all_symbols = [
+                observation.to_dict() for observation in report.observations
+            ]
+            breadth_data.data_quality = report.data_quality
+            if report.timestamp:
+                breadth_data.timestamp = report.timestamp
+        except Exception:
+            pass
+
+        return breadth_data
 
     @staticmethod
     def _parse_json_field(value: Optional[str]) -> Optional[Any]:

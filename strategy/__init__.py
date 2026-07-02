@@ -15,6 +15,7 @@ Feature flags:
     enable_overnight_risk_engine
     enable_morning_intelligence
     enable_sector_leadership
+    enable_market_breadth
     enable_risk_based_position_sizing
     enable_confidence_score
     enable_statistical_decision_support
@@ -28,9 +29,10 @@ Rollout order:
     6. Overnight risk engine
     7. Morning intelligence
     8. Sector leadership
-    9. Risk-based position sizing
-    10. Confidence scoring
-    11. Statistical decision support
+    9. Market breadth
+    10. Risk-based position sizing
+    11. Confidence scoring
+    12. Statistical decision support
 """
 
 from strategy.config import FeatureFlags, get_feature_flags, reset_feature_flags
@@ -48,6 +50,11 @@ from strategy.sector_leadership import (
     SectorLeadershipReport,
     SectorLeadershipResult,
 )
+from strategy.market_breadth import (
+    MarketBreadthAnalyzer,
+    MarketBreadthReport,
+    BreadthSymbolObservation,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -57,6 +64,9 @@ __all__ = [
     "EvaluationResult",
     "MorningIntelligenceAgent",
     "MorningIntelligenceReport",
+    "BreadthSymbolObservation",
+    "MarketBreadthAnalyzer",
+    "MarketBreadthReport",
     "SectorLeadershipAnalyzer",
     "SectorLeadershipReport",
     "SectorLeadershipResult",

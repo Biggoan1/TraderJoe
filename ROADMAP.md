@@ -144,6 +144,22 @@ It must remain accurate at all times.
   - Exposes sector leadership through the read-only research platform market intelligence contract
   - Adds disabled-by-default `enable_sector_leadership` flag inventory without runner integration
 
+### Sprint 10: Market Breadth Analysis
+- **Date:** 2026-07-02
+- **Commit:** Pending validation
+- **Branch:** sprint-3/daily-digest
+- **Tests:** 401 passing (30 new/updated market breadth and research platform tests + 371 existing)
+- **Behavior change:** No
+- **Feature flags enabled:** None
+- **Status:** Review
+- **Summary:**
+  - Observational market breadth analyzer tracks watchlist participation
+  - Measures percent above 20-day and 50-day moving averages
+  - Tracks advancers, decliners, unchanged symbols, new highs, and new lows
+  - Produces aggregate breadth score and breadth regime
+  - Exposes market breadth through the read-only research platform market intelligence contract
+  - Adds disabled-by-default `enable_market_breadth` flag inventory without runner integration
+
 ### Kanban Board
 
 Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
@@ -155,7 +171,7 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_909faeab` | Sprint 7: Morning Intelligence Agent | Phase 2 | Done |
 | `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Done |
 | `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Done |
-| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Ready |
+| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Review |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
 
@@ -247,5 +263,5 @@ Never implement multiple behavior-changing features in a single sprint.
 
 ## Current Sprint
 
-**Completed:** Sprint 9 — Sector Leadership Tracking (Phase 2)
-**Next:** Sprint 10 — Market Breadth Analysis (Phase 2)
+**Current:** Sprint 10 — Market Breadth Analysis (Phase 2, Review)
+**Next:** Phase 3 planning after Sprint 10 validation

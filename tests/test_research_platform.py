@@ -18,6 +18,7 @@ from strategy.research_platform import (
     MarketRegimeData,
     RelativeStrengthData,
     SectorLeadershipData,
+    MarketBreadthData,
     MarketIntelligenceData,
     ResearchNote,
     ResearchSnapshot,
@@ -101,6 +102,14 @@ class TestDataContracts:
         assert sl.weakest_sectors == []
         assert sl.all_sectors == []
         assert sl.data_quality == "missing"
+
+    def test_market_breadth_data_defaults(self):
+        mb = MarketBreadthData()
+        assert mb.breadth_score == 50.0
+        assert mb.breadth_regime == "missing"
+        assert mb.above_ma_percentages == {}
+        assert mb.all_symbols == []
+        assert mb.data_quality == "missing"
 
     def test_research_note_defaults(self):
         note = ResearchNote()
@@ -336,12 +345,14 @@ class TestGetSnapshot:
     def test_snapshot_has_all_fields(self, platform):
         with patch("strategy.market_regime", create=True), \
              patch("strategy.relative_strength", create=True), \
-             patch("strategy.sector_leadership", create=True):
+             patch("strategy.sector_leadership", create=True), \
+             patch("strategy.market_breadth", create=True):
             snap = platform.get_snapshot()
             assert snap.portfolio is not None
             assert snap.performance is not None
             assert snap.market_intelligence is not None
             assert isinstance(snap.market_intelligence.sector_leadership, SectorLeadershipData)
+            assert isinstance(snap.market_intelligence.market_breadth, MarketBreadthData)
             assert isinstance(snap.recent_trades, list)
             assert isinstance(snap.research_notes, list)
             assert isinstance(snap.daily_digests, list)
@@ -351,7 +362,8 @@ class TestGetSnapshot:
     def test_snapshot_feature_flags(self, platform):
         with patch("strategy.market_regime", create=True), \
              patch("strategy.relative_strength", create=True), \
-             patch("strategy.sector_leadership", create=True):
+             patch("strategy.sector_leadership", create=True), \
+             patch("strategy.market_breadth", create=True):
             snap = platform.get_snapshot()
             assert "enable_historical_statistics" in snap.feature_flags
 
@@ -362,18 +374,21 @@ class TestGetSnapshotJson:
     def test_json_output(self, platform):
         with patch("strategy.market_regime", create=True), \
              patch("strategy.relative_strength", create=True), \
-             patch("strategy.sector_leadership", create=True):
+             patch("strategy.sector_leadership", create=True), \
+             patch("strategy.market_breadth", create=True):
             json_str = platform.get_snapshot_json()
             data = json.loads(json_str)
             assert "portfolio" in data
             assert "performance" in data
             assert "sector_leadership" in data["market_intelligence"]
+            assert "market_breadth" in data["market_intelligence"]
             assert "generated_at" in data
 
     def test_json_serializable(self, platform):
         with patch("strategy.market_regime", create=True), \
              patch("strategy.relative_strength", create=True), \
-             patch("strategy.sector_leadership", create=True):
+             patch("strategy.sector_leadership", create=True), \
+             patch("strategy.market_breadth", create=True):
             json_str = platform.get_snapshot_json()
             # Should not raise
             json.loads(json_str)
@@ -477,3 +492,55 @@ class TestFetchSectorLeadership:
         assert sector_data.weakest_sectors == []
         assert sector_data.all_sectors == []
         assert sector_data.data_quality == "missing"
+
+
+class TestFetchMarketBreadth:
+    """Test _fetch_market_breadth internal method."""
+
+    def test_returns_market_breadth_data(self, platform):
+        mock_observation = MagicMock()
+        mock_observation.to_dict.return_value = {
+            "symbol": "AAPL",
+            "latest_close": 200.0,
+            "above_moving_average": {"20d": True},
+        }
+        mock_report = MagicMock(
+            breadth_score=72.0,
+            breadth_regime="strong",
+            above_ma_percentages={"20d": 80.0},
+            advance_decline_ratio=2.0,
+            advancing_count=8,
+            declining_count=4,
+            unchanged_count=1,
+            new_high_count=2,
+            new_low_count=0,
+            observations=[mock_observation],
+            data_quality="complete",
+            timestamp="2026-07-02T12:00:00+00:00",
+        )
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = mock_report
+
+        with patch("strategy.market_breadth.MarketBreadthAnalyzer", return_value=mock_analyzer):
+            breadth_data = platform._fetch_market_breadth()
+
+        assert isinstance(breadth_data, MarketBreadthData)
+        assert breadth_data.breadth_score == 72.0
+        assert breadth_data.breadth_regime == "strong"
+        assert breadth_data.above_ma_percentages == {"20d": 80.0}
+        assert breadth_data.advance_decline_ratio == 2.0
+        assert breadth_data.advancing_count == 8
+        assert breadth_data.declining_count == 4
+        assert breadth_data.all_symbols[0]["symbol"] == "AAPL"
+        assert breadth_data.data_quality == "complete"
+        assert breadth_data.timestamp == "2026-07-02T12:00:00+00:00"
+
+    def test_returns_empty_data_on_failure(self, platform):
+        with patch("strategy.market_breadth.MarketBreadthAnalyzer", side_effect=RuntimeError("boom")):
+            breadth_data = platform._fetch_market_breadth()
+
+        assert isinstance(breadth_data, MarketBreadthData)
+        assert breadth_data.breadth_score == 50.0
+        assert breadth_data.breadth_regime == "missing"
+        assert breadth_data.all_symbols == []
+        assert breadth_data.data_quality == "missing"

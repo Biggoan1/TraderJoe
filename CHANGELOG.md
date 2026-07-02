@@ -4,6 +4,45 @@ Trader Joe release history.
 
 ---
 
+## v0.10.0 — Sprint 10: Market Breadth Analysis
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Commit:** Pending validation
+
+### Added
+- `strategy/market_breadth.py` — observational market breadth tracker
+- Watchlist participation analysis across 20-day and 50-day moving averages
+- Advancer, decliner, unchanged, new-high, and new-low counts
+- Aggregate breadth score and breadth regime classification
+- `BreadthSymbolObservation` and `MarketBreadthReport` structured outputs with JSON-ready serialization
+- Market breadth summaries exposed through the read-only research platform
+- Disabled-by-default `enable_market_breadth` feature flag inventory
+
+### Tests
+- `tests/test_market_breadth.py` — 27 tests covering:
+  - Moving average, period return, latest close, percentage, and A/D ratio helpers
+  - New high and new low edge cases
+  - Breadth score and regime classification
+  - Report/result serialization
+  - Missing data, invalid close, insufficient history, and provider failures
+  - Mocked price provider behavior
+  - Observational-only guarantees
+- `tests/test_research_platform.py` — 3 new tests plus snapshot coverage updates covering:
+  - Market breadth data contract defaults
+  - Snapshot JSON compatibility
+  - Mocked research platform market breadth handoff
+  - Failure fallback behavior
+- 401 passing total (0 failures)
+
+### Notes
+- Observational only — zero impact on trading decisions
+- No buy/sell logic, scheduler behavior, runner behavior, or enabled feature flags changed
+- Card `t_5ec6406e` moved to Review for validation
+
+---
+
 ## v0.9.0 — Sprint 9: Sector Leadership Tracking
 
 **Date:** 2026-07-02
