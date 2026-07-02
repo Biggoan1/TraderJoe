@@ -68,13 +68,26 @@ It must remain accurate at all times.
 
 ## Phase 2 — Market Intelligence
 
-**Status:** NOT STARTED
+**Status:** IN PROGRESS
 
 **Objective:** Increase situational awareness without affecting trading decisions.
 
+### Sprint 5: Market Regime Classification ✅
+- **Date:** 2026-07-02
+- **Commit:** b785a35
+- **Branch:** sprint-3/daily-digest
+- **Tests:** 151 passing
+- **Behavior change:** No
+- **Feature flags enabled:** None
+- **Summary:**
+  - Market regime classification: bullish/bearish/volatile/neutral
+  - Uses SPY/QQQ indicators: MA position, ATR, ADX, MACD
+  - Weighted scoring across 8 signals (4 per benchmark)
+  - 43 new tests covering indicators, signals, and classification
+
 ### Planned Sprints
 
-- **Sprint 5:** Market Regime Classification (bullish/bearish/volatile/neutral)
+- ~~Sprint 5: Market Regime Classification~~ ✅ COMPLETE
 - **Sprint 6:** Overnight Risk Engine (pre-market gap analysis)
 - **Sprint 7:** Morning Intelligence Agent (market context briefing)
 - **Sprint 8:** Enhanced Daily Digest + Expanded Trade Metadata
@@ -171,4 +184,5 @@ Never implement multiple behavior-changing features in a single sprint.
 
 ## Current Sprint
 
-**Next:** Sprint 5 — Market Regime Classification (Phase 2)
+**Completed:** Sprint 5 — Market Regime Classification (Phase 2)
+**Next:** Sprint 6 — Overnight Risk Engine (Phase 2)

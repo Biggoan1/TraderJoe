@@ -1,22 +1,23 @@
 # Trader Joe — Status
 
 ## Version
-- Current: v0.4.0
+- Current: v0.5.0
 - Champion: v0.4.0
 - Challenger: none
 
 ## Sprint
-- Current: 5 (planned)
-- Last completed: 4
-- Next: Market Regime Classification
+- Current: 6 (planned)
+- Last completed: 5
+- Next: Overnight Risk Engine
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: 74dc06c
-- Status: dirty (uncommitted changes)
+- Commit: b785a35
+- Tag: v0.4.0 (Phase 1 baseline)
+- Status: clean
 
 ## Testing
-- Tests passing: 108
+- Tests passing: 151
 - Tests failing: 0
 - Last run: 2026-07-02
 
@@ -27,7 +28,6 @@
 ## Trading
 - Production mode: Champion
 - Paper trading: active
-- Last digest: 2026-07-02
 
 ## Database
 - Schema version: 1
@@ -39,4 +39,4 @@
 ## Phase
 - Current: 2 (Market Intelligence)
 - Phase 1: complete
-- Phase 2: not started
+- Phase 2: in progress (1/6 complete)

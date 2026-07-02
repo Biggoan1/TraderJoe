@@ -4,6 +4,30 @@ Trader Joe release history.
 
 ---
 
+## v0.5.0 — Sprint 5: Market Regime Classification
+
+**Date:** 2026-07-02
+**Commit:** b785a35
+**Branch:** sprint-3/daily-digest
+
+### Added
+- `strategy/market_regime.py` — Market regime classification engine
+- Classifies market as bullish/bearish/volatile/neutral
+- SPY/QQQ analysis: price vs MA, ATR volatility, ADX trend strength, MACD momentum
+- 8 signals across 2 benchmarks with weighted scoring
+- 43 new tests for indicators, signals, and classification
+
+### Tests
+- 151 passing (0 failures)
+
+### Notes
+- Observational only — no impact on trading decisions
+- Feature flag: `enable_market_regime` (disabled by default)
+- Classification uses 20-day and 50-day MAs, 14-day ATR/ADX
+- Foundation for Phase 3 Decision Engine regime-based scoring
+
+---
+
 ## v0.4.0 — Sprint 4: Relative Strength Analysis
 
 **Date:** 2026-07-02
