@@ -68,7 +68,7 @@ It must remain accurate at all times.
 
 ## Phase 2 — Market Intelligence
 
-**Status:** IN PROGRESS (Kanban-driven)
+**Status:** COMPLETE (Kanban-driven implementation)
 
 **Objective:** Increase situational awareness without affecting trading decisions.
 
@@ -146,12 +146,12 @@ It must remain accurate at all times.
 
 ### Sprint 10: Market Breadth Analysis
 - **Date:** 2026-07-02
-- **Commit:** Pending validation
+- **Commit:** 5bcbf83
 - **Branch:** sprint-3/daily-digest
 - **Tests:** 401 passing (30 new/updated market breadth and research platform tests + 371 existing)
 - **Behavior change:** No
 - **Feature flags enabled:** None
-- **Status:** Review
+- **Status:** Done
 - **Summary:**
   - Observational market breadth analyzer tracks watchlist participation
   - Measures percent above 20-day and 50-day moving averages
@@ -171,7 +171,7 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_909faeab` | Sprint 7: Morning Intelligence Agent | Phase 2 | Done |
 | `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Done |
 | `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Done |
-| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Review |
+| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Done |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
 
@@ -263,5 +263,5 @@ Never implement multiple behavior-changing features in a single sprint.
 
 ## Current Sprint
 
-**Current:** Sprint 10 — Market Breadth Analysis (Phase 2, Review)
-**Next:** Phase 3 planning after Sprint 10 validation
+**Completed:** Sprint 10 — Market Breadth Analysis (Phase 2)
+**Next:** Phase 3 planning

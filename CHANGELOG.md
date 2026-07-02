@@ -8,8 +8,8 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
-**Commit:** Pending validation
+**Status:** Done
+**Commit:** 5bcbf83
 
 ### Added
 - `strategy/market_breadth.py` — observational market breadth tracker
@@ -39,7 +39,8 @@ Trader Joe release history.
 ### Notes
 - Observational only — zero impact on trading decisions
 - No buy/sell logic, scheduler behavior, runner behavior, or enabled feature flags changed
-- Card `t_5ec6406e` moved to Review for validation
+- Card `t_5ec6406e` validated and moved to Done
+- Phase 2 Market Intelligence implementation completed
 
 ---
 
