@@ -17,6 +17,7 @@ from strategy.research_platform import (
     PerformanceData,
     MarketRegimeData,
     RelativeStrengthData,
+    SectorLeadershipData,
     MarketIntelligenceData,
     ResearchNote,
     ResearchSnapshot,
@@ -93,6 +94,13 @@ class TestDataContracts:
         mr = MarketRegimeData()
         assert mr.regime == "unknown"
         assert mr.confidence == 0.0
+
+    def test_sector_leadership_data_defaults(self):
+        sl = SectorLeadershipData()
+        assert sl.strongest_sectors == []
+        assert sl.weakest_sectors == []
+        assert sl.all_sectors == []
+        assert sl.data_quality == "missing"
 
     def test_research_note_defaults(self):
         note = ResearchNote()
@@ -327,11 +335,13 @@ class TestGetSnapshot:
 
     def test_snapshot_has_all_fields(self, platform):
         with patch("strategy.market_regime", create=True), \
-             patch("strategy.relative_strength", create=True):
+             patch("strategy.relative_strength", create=True), \
+             patch("strategy.sector_leadership", create=True):
             snap = platform.get_snapshot()
             assert snap.portfolio is not None
             assert snap.performance is not None
             assert snap.market_intelligence is not None
+            assert isinstance(snap.market_intelligence.sector_leadership, SectorLeadershipData)
             assert isinstance(snap.recent_trades, list)
             assert isinstance(snap.research_notes, list)
             assert isinstance(snap.daily_digests, list)
@@ -340,7 +350,8 @@ class TestGetSnapshot:
 
     def test_snapshot_feature_flags(self, platform):
         with patch("strategy.market_regime", create=True), \
-             patch("strategy.relative_strength", create=True):
+             patch("strategy.relative_strength", create=True), \
+             patch("strategy.sector_leadership", create=True):
             snap = platform.get_snapshot()
             assert "enable_historical_statistics" in snap.feature_flags
 
@@ -350,16 +361,19 @@ class TestGetSnapshotJson:
 
     def test_json_output(self, platform):
         with patch("strategy.market_regime", create=True), \
-             patch("strategy.relative_strength", create=True):
+             patch("strategy.relative_strength", create=True), \
+             patch("strategy.sector_leadership", create=True):
             json_str = platform.get_snapshot_json()
             data = json.loads(json_str)
             assert "portfolio" in data
             assert "performance" in data
+            assert "sector_leadership" in data["market_intelligence"]
             assert "generated_at" in data
 
     def test_json_serializable(self, platform):
         with patch("strategy.market_regime", create=True), \
-             patch("strategy.relative_strength", create=True):
+             patch("strategy.relative_strength", create=True), \
+             patch("strategy.sector_leadership", create=True):
             json_str = platform.get_snapshot_json()
             # Should not raise
             json.loads(json_str)
@@ -423,3 +437,43 @@ class TestFetchRelativeStrength:
         assert isinstance(rs, RelativeStrengthData)
         assert rs.timestamp  # timestamp set
 
+
+class TestFetchSectorLeadership:
+    """Test _fetch_sector_leadership internal method."""
+
+    def test_returns_sector_leadership_data(self, platform):
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {
+            "sector": "Technology",
+            "symbol": "XLK",
+            "leadership_score": 62.0,
+        }
+        mock_report = MagicMock(
+            strongest_sectors=["Technology"],
+            weakest_sectors=["Utilities"],
+            results=[mock_result],
+            data_quality="complete",
+            timestamp="2026-07-02T12:00:00+00:00",
+        )
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze.return_value = mock_report
+
+        with patch("strategy.sector_leadership.SectorLeadershipAnalyzer", return_value=mock_analyzer):
+            sector_data = platform._fetch_sector_leadership()
+
+        assert isinstance(sector_data, SectorLeadershipData)
+        assert sector_data.strongest_sectors == ["Technology"]
+        assert sector_data.weakest_sectors == ["Utilities"]
+        assert sector_data.all_sectors[0]["symbol"] == "XLK"
+        assert sector_data.data_quality == "complete"
+        assert sector_data.timestamp == "2026-07-02T12:00:00+00:00"
+
+    def test_returns_empty_data_on_failure(self, platform):
+        with patch("strategy.sector_leadership.SectorLeadershipAnalyzer", side_effect=RuntimeError("boom")):
+            sector_data = platform._fetch_sector_leadership()
+
+        assert isinstance(sector_data, SectorLeadershipData)
+        assert sector_data.strongest_sectors == []
+        assert sector_data.weakest_sectors == []
+        assert sector_data.all_sectors == []
+        assert sector_data.data_quality == "missing"

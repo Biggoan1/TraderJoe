@@ -134,10 +134,21 @@ class RelativeStrengthData:
 
 
 @dataclass
+class SectorLeadershipData:
+    """Sector leadership context."""
+    strongest_sectors: List[str] = field(default_factory=list)
+    weakest_sectors: List[str] = field(default_factory=list)
+    all_sectors: List[Dict[str, Any]] = field(default_factory=list)
+    data_quality: str = "missing"
+    timestamp: str = ""
+
+
+@dataclass
 class MarketIntelligenceData:
     """Aggregated market intelligence."""
     regime: MarketRegimeData = field(default_factory=MarketRegimeData)
     relative_strength: RelativeStrengthData = field(default_factory=RelativeStrengthData)
+    sector_leadership: SectorLeadershipData = field(default_factory=SectorLeadershipData)
     timestamp: str = ""
 
 
@@ -285,6 +296,12 @@ class ResearchPlatform:
         # Relative strength
         try:
             intelligence.relative_strength = self._fetch_relative_strength()
+        except Exception:
+            pass
+
+        # Sector leadership
+        try:
+            intelligence.sector_leadership = self._fetch_sector_leadership()
         except Exception:
             pass
 
@@ -473,6 +490,26 @@ class ResearchPlatform:
             pass
 
         return rs_data
+
+    def _fetch_sector_leadership(self) -> SectorLeadershipData:
+        """Fetch current sector leadership context."""
+        sector_data = SectorLeadershipData()
+        sector_data.timestamp = datetime.now(timezone.utc).isoformat()
+
+        try:
+            from strategy.sector_leadership import SectorLeadershipAnalyzer
+
+            report = SectorLeadershipAnalyzer().analyze()
+            sector_data.strongest_sectors = list(report.strongest_sectors)
+            sector_data.weakest_sectors = list(report.weakest_sectors)
+            sector_data.all_sectors = [result.to_dict() for result in report.results]
+            sector_data.data_quality = report.data_quality
+            if report.timestamp:
+                sector_data.timestamp = report.timestamp
+        except Exception:
+            pass
+
+        return sector_data
 
     @staticmethod
     def _parse_json_field(value: Optional[str]) -> Optional[Any]:

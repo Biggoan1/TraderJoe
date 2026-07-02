@@ -14,9 +14,10 @@ Rollout order:
     5. Sell score
     6. Overnight risk engine
     7. Morning intelligence
-    8. Risk-based position sizing
-    9. Confidence scoring
-    10. Statistical decision support
+    8. Sector leadership
+    9. Risk-based position sizing
+    10. Confidence scoring
+    11. Statistical decision support
 """
 
 from dataclasses import dataclass, field
@@ -38,6 +39,7 @@ class FeatureFlags:
     # --- Analysis features ---
     enable_relative_strength: bool = False
     enable_market_regime: bool = False
+    enable_sector_leadership: bool = False
     enable_confidence_score: bool = False
     enable_statistical_decision_support: bool = False
 

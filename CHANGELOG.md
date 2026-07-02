@@ -4,6 +4,43 @@ Trader Joe release history.
 
 ---
 
+## v0.9.0 — Sprint 9: Sector Leadership Tracking
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Commit:** Pending validation
+
+### Added
+- `strategy/sector_leadership.py` — observational sector leadership tracker
+- Sector ETF leadership ranking against SPY across 5-day, 20-day, and 60-day windows
+- `SectorLeadershipResult` and `SectorLeadershipReport` structured outputs with JSON-ready serialization
+- Strongest/weakest sector summaries exposed through the read-only research platform
+- Disabled-by-default `enable_sector_leadership` feature flag inventory
+
+### Tests
+- `tests/test_sector_leadership.py` — 20 tests covering:
+  - Period return calculations
+  - Leadership scoring and trend classification
+  - Report/result serialization
+  - Missing sector data and missing benchmark handling
+  - Invalid/zero price handling
+  - Mocked price provider behavior
+  - Observational-only guarantees
+- `tests/test_research_platform.py` — 3 new tests plus snapshot coverage updates covering:
+  - Sector leadership data contract defaults
+  - Snapshot JSON compatibility
+  - Mocked research platform sector leadership handoff
+  - Failure fallback behavior
+- 371 passing total (0 failures)
+
+### Notes
+- Observational only — zero impact on trading decisions
+- No buy/sell logic, scheduler behavior, runner behavior, or enabled feature flags changed
+- Card `t_c0ab3a10` moved to Review for validation
+
+---
+
 ## v0.8.0 — Sprint 8: Enhanced Daily Digest + Trade Metadata
 
 **Date:** 2026-07-02

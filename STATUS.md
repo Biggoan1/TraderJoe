@@ -1,23 +1,23 @@
 # Trader Joe — Status
 
 ## Version
-- Current: v0.8.0
+- Current: v0.9.0
 - Champion: v0.4.0
 - Challenger: none
 
 ## Sprint
-- Current: 9 (Sector Leadership Tracking, Ready)
+- Current: 9 (Sector Leadership Tracking, Review)
 - Last completed: 8
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: TBD (Sprint 8 validation commit)
+- Commit: Pending Sprint 9 implementation commit
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: clean after Sprint 8 validation commit
+- Status: Sprint 9 implemented, awaiting validation
 
 ## Testing
-- Tests passing: 348
+- Tests passing: 371
 - Tests failing: 0
 - Last run: 2026-07-02
 
@@ -39,4 +39,4 @@
 ## Phase
 - Current: 2 (Market Intelligence)
 - Phase 1: complete
-- Phase 2: in progress (4/6 complete)
+- Phase 2: in progress (4/6 complete, Sprint 9 in Review)

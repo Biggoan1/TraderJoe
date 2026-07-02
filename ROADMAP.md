@@ -129,6 +129,21 @@ It must remain accurate at all times.
   - Digest renders exit reasons, market context, flags, entry scores, and RS snapshots
   - Digest date now respects the requested report date
 
+### Sprint 9: Sector Leadership Tracking
+- **Date:** 2026-07-02
+- **Commit:** Pending validation
+- **Branch:** sprint-3/daily-digest
+- **Tests:** 371 passing (23 new sector leadership and research platform tests + 348 existing)
+- **Behavior change:** No
+- **Feature flags enabled:** None
+- **Status:** Review
+- **Summary:**
+  - Observational sector leadership analyzer ranks sector ETFs against SPY
+  - Tracks strongest and weakest sectors across 5-day, 20-day, and 60-day windows
+  - Handles missing sector data, missing benchmark data, invalid prices, and provider failures
+  - Exposes sector leadership through the read-only research platform market intelligence contract
+  - Adds disabled-by-default `enable_sector_leadership` flag inventory without runner integration
+
 ### Kanban Board
 
 Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
@@ -139,8 +154,8 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 |---|---|---|---|
 | `t_909faeab` | Sprint 7: Morning Intelligence Agent | Phase 2 | Done |
 | `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Done |
-| `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Ready |
-| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Blocked (-> S9) |
+| `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Review |
+| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Blocked (-> S9 validation) |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
 
@@ -232,5 +247,5 @@ Never implement multiple behavior-changing features in a single sprint.
 
 ## Current Sprint
 
-**Completed:** Sprint 8 — Enhanced Daily Digest + Trade Metadata (Phase 2)
-**Next:** Sprint 9 — Sector Leadership Tracking (Phase 2)
+**Current:** Sprint 9 — Sector Leadership Tracking (Phase 2, Review)
+**Next:** Sprint 10 — Market Breadth Analysis (Phase 2, blocked pending Sprint 9 validation)
