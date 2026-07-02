@@ -131,12 +131,12 @@ It must remain accurate at all times.
 
 ### Sprint 9: Sector Leadership Tracking
 - **Date:** 2026-07-02
-- **Commit:** Pending validation
+- **Commit:** 465faeb
 - **Branch:** sprint-3/daily-digest
 - **Tests:** 371 passing (23 new sector leadership and research platform tests + 348 existing)
 - **Behavior change:** No
 - **Feature flags enabled:** None
-- **Status:** Review
+- **Status:** Done
 - **Summary:**
   - Observational sector leadership analyzer ranks sector ETFs against SPY
   - Tracks strongest and weakest sectors across 5-day, 20-day, and 60-day windows
@@ -154,8 +154,8 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 |---|---|---|---|
 | `t_909faeab` | Sprint 7: Morning Intelligence Agent | Phase 2 | Done |
 | `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Done |
-| `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Review |
-| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Blocked (-> S9 validation) |
+| `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Done |
+| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Ready |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
 
@@ -247,5 +247,5 @@ Never implement multiple behavior-changing features in a single sprint.
 
 ## Current Sprint
 
-**Current:** Sprint 9 — Sector Leadership Tracking (Phase 2, Review)
-**Next:** Sprint 10 — Market Breadth Analysis (Phase 2, blocked pending Sprint 9 validation)
+**Completed:** Sprint 9 — Sector Leadership Tracking (Phase 2)
+**Next:** Sprint 10 — Market Breadth Analysis (Phase 2)

@@ -8,8 +8,8 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
-**Commit:** Pending validation
+**Status:** Done
+**Commit:** 465faeb
 
 ### Added
 - `strategy/sector_leadership.py` — observational sector leadership tracker
@@ -37,7 +37,8 @@ Trader Joe release history.
 ### Notes
 - Observational only — zero impact on trading decisions
 - No buy/sell logic, scheduler behavior, runner behavior, or enabled feature flags changed
-- Card `t_c0ab3a10` moved to Review for validation
+- Card `t_c0ab3a10` validated and moved to Done
+- Card `t_5ec6406e` unblocked and moved to Ready
 
 ---
 

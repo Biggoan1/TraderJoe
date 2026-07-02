@@ -6,15 +6,15 @@
 - Challenger: none
 
 ## Sprint
-- Current: 9 (Sector Leadership Tracking, Review)
-- Last completed: 8
+- Current: 10 (Market Breadth Analysis, Ready)
+- Last completed: 9
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: Pending Sprint 9 implementation commit
+- Commit: latest HEAD (Sprint 9 validation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Sprint 9 implemented, awaiting validation
+- Status: Sprint 9 validated; Sprint 10 ready
 
 ## Testing
 - Tests passing: 371
@@ -39,4 +39,4 @@
 ## Phase
 - Current: 2 (Market Intelligence)
 - Phase 1: complete
-- Phase 2: in progress (4/6 complete, Sprint 9 in Review)
+- Phase 2: in progress (5/6 complete)
