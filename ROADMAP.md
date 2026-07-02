@@ -68,7 +68,7 @@ It must remain accurate at all times.
 
 ## Phase 2 — Market Intelligence
 
-**Status:** IN PROGRESS
+**Status:** IN PROGRESS (Kanban-driven)
 
 **Objective:** Increase situational awareness without affecting trading decisions.
 
@@ -87,7 +87,7 @@ It must remain accurate at all times.
 
 ### Sprint 6: Overnight Risk Engine ✅
 - **Date:** 2026-07-02
-- **Commit:** TBD
+- **Commit:** 2e6bf02
 - **Branch:** sprint-3/daily-digest
 - **Tests:** 320 passing (78 overnight risk + 242 existing)
 - **Behavior change:** No
@@ -100,14 +100,18 @@ It must remain accurate at all times.
   - Config-backed gap threshold with mocked PriceFetcher coverage
   - Runner stubs added (observational only)
 
-### Planned Sprints
+### Kanban Board
 
-- ~~Sprint 5: Market Regime Classification~~ ✅ COMPLETE
-- ~~Sprint 6: Overnight Risk Engine~~ ✅ COMPLETE
-- **Sprint 7:** Morning Intelligence Agent (market context briefing)
-- **Sprint 8:** Enhanced Daily Digest + Expanded Trade Metadata
-- **Sprint 9:** Sector Leadership Tracking
-- **Sprint 10:** Market Breadth Analysis
+Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
+
+**Chain:** Sprint 7 → Sprint 8 → Sprint 9 → Sprint 10 → Phase 3+
+
+| # | Card | Sprint | Status |
+|---|---|---|---|
+| `t_909faeab` | Sprint 7: Morning Intelligence Agent | Phase 2 | In Progress |
+| `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Blocked (→ S7) |
+| `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Blocked (→ S8) |
+| `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Blocked (→ S9) |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
 

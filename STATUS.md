@@ -6,9 +6,9 @@
 - Challenger: none
 
 ## Sprint
-- Current: 7 (planned)
+- Current: 7 (Morning Intelligence Agent, Kanban-driven)
 - Last completed: 6
-- Next: Morning Intelligence Agent
+- Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
