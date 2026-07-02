@@ -4,6 +4,55 @@ Trader Joe release history.
 
 ---
 
+## v0.6.0 — Sprint 6: Overnight Risk Engine
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+
+### Added
+- `strategy/overnight_risk.py` — Overnight gap risk analysis engine
+- Measures overnight market risk by comparing previous close to
+  pre-market/after-hours prices
+- Purely observational — produces NO trading signals, places NO trades,
+  and does NOT influence strategy scoring
+- Per-symbol observations: previous_close, current_price, overnight_gap_pct,
+  gap_direction, significant_gap, risk_score, data_quality
+- Aggregate report: symbols_analyzed, significant_gaps, avg_risk_score,
+  max_gap_up, max_gap_down
+- Gap calculation helpers: calculate_gap_pct, determine_gap_direction,
+  is_significant_gap, compute_risk_score
+- PriceFetcher with yfinance integration and graceful error handling
+- Feature flag: `enable_overnight_risk_engine` (disabled by default)
+- Runner stubs in `_run_challenger` and `_challenger_sell` (observational only)
+
+### Changed
+- Removed dead imports (`pandas`, `OVERNIGHT_RISK_THRESHOLD`,
+  `OVERNIGHT_EVAL_START_HOUR`, `OVERNIGHT_EVAL_START_MINUTE`) from
+  `strategy/overnight_risk.py`
+- Documented threshold design: engine uses `DEFAULT_GAP_THRESHOLD` (2.0 %)
+  as the natural unit; config risk-score threshold reserved for Phase 3
+
+### Tests
+- `tests/test_overnight_risk.py` — 78 tests covering:
+  - OvernightGapObservation and OvernightRiskReport dataclasses
+  - Gap calculation helpers (calculate_gap_pct, determine_gap_direction,
+    is_significant_gap, compute_risk_score)
+  - PriceFetcher (mocked yfinance)
+  - OvernightRiskEngine (assess, assess_symbol, get_summary)
+  - get_engine convenience function
+  - Feature flag integration
+  - Observational-only guarantees (no trading methods, no signals)
+  - Edge cases (missing data, zero/invalid close, extreme gaps, single price)
+- 320 passing total (0 failures)
+
+### Notes
+- Observational only — zero impact on trading decisions
+- Gap threshold default is wired through `strategy.config`
+- Timing/risk-score constants defined for future scheduler integration
+- Engine can be wired into Phase 3 Decision Engine as a sell signal source
+
+---
+
 ## v0.5.0 — Sprint 5: Market Regime Classification
 
 **Date:** 2026-07-02

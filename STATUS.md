@@ -1,23 +1,23 @@
 # Trader Joe — Status
 
 ## Version
-- Current: v0.5.0
+- Current: v0.6.0
 - Champion: v0.4.0
 - Challenger: none
 
 ## Sprint
-- Current: 6 (planned)
-- Last completed: 5
-- Next: Overnight Risk Engine
+- Current: 7 (planned)
+- Last completed: 6
+- Next: Morning Intelligence Agent
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: 1c8bf37 (docs update)
+- Commit: TBD (Sprint 6 commit)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: untracked files present
+- Status: clean after Sprint 6 commit
 
 ## Testing
-- Tests passing: 242
+- Tests passing: 320
 - Tests failing: 0
 - Last run: 2026-07-02
 
@@ -39,4 +39,4 @@
 ## Phase
 - Current: 2 (Market Intelligence)
 - Phase 1: complete
-- Phase 2: in progress (1/6 complete)
+- Phase 2: in progress (2/6 complete)

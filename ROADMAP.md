@@ -85,10 +85,25 @@ It must remain accurate at all times.
   - Weighted scoring across 8 signals (4 per benchmark)
   - 43 new tests covering indicators, signals, and classification
 
+### Sprint 6: Overnight Risk Engine ✅
+- **Date:** 2026-07-02
+- **Commit:** TBD
+- **Branch:** sprint-3/daily-digest
+- **Tests:** 320 passing (78 overnight risk + 242 existing)
+- **Behavior change:** No
+- **Feature flags enabled:** None
+- **Summary:**
+  - Overnight gap risk analysis: previous close vs pre-market/after-hours
+  - Per-symbol risk scoring with aggregate report
+  - Purely observational — no trading signals, no behavior change
+  - 78 comprehensive tests covering all engine components
+  - Config-backed gap threshold with mocked PriceFetcher coverage
+  - Runner stubs added (observational only)
+
 ### Planned Sprints
 
 - ~~Sprint 5: Market Regime Classification~~ ✅ COMPLETE
-- **Sprint 6:** Overnight Risk Engine (pre-market gap analysis)
+- ~~Sprint 6: Overnight Risk Engine~~ ✅ COMPLETE
 - **Sprint 7:** Morning Intelligence Agent (market context briefing)
 - **Sprint 8:** Enhanced Daily Digest + Expanded Trade Metadata
 - **Sprint 9:** Sector Leadership Tracking
@@ -184,5 +199,5 @@ Never implement multiple behavior-changing features in a single sprint.
 
 ## Current Sprint
 
-**Completed:** Sprint 5 — Market Regime Classification (Phase 2)
-**Next:** Sprint 6 — Overnight Risk Engine (Phase 2)
+**Completed:** Sprint 6 — Overnight Risk Engine (Phase 2)
+**Next:** Sprint 7 — Morning Intelligence Agent (Phase 2)

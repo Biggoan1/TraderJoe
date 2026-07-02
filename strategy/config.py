@@ -117,7 +117,8 @@ MAX_SECTOR_EXPOSURE = 0.25         # 25% max in single sector
 MAX_PORTFOLIO_RISK = 0.10          # 10% total portfolio risk
 
 # --- Overnight Risk Engine config ---
-OVERNIGHT_RISK_THRESHOLD = 60      # Score above which we recommend selling
+OVERNIGHT_GAP_THRESHOLD_PERCENT = 2.0  # Gap % flagged as significant
+OVERNIGHT_RISK_THRESHOLD = 60      # Future risk-score threshold (0-100)
 OVERNIGHT_EVAL_START_HOUR = 15     # 3:00 PM ET
 OVERNIGHT_EVAL_START_MINUTE = 45   # 3:45 PM ET
 
