@@ -217,6 +217,7 @@ from strategy.historical_validation import (
 )
 from strategy.research_analyst import (
     ANALYST_REPORT_ID_PREFIX,
+    CLOUD_HOST_TOKENS,
     CLOUD_MODEL_TOKENS,
     DEFAULT_ANALYST_OUTPUT_DIR,
     DEFAULT_LOCAL_ENDPOINT,
@@ -225,6 +226,8 @@ from strategy.research_analyst import (
     MODEL_LISTING_PATHS,
     ModelDiscoveryError,
     ModelNotAvailableError,
+    RESEARCH_LLM_ALLOW_REMOTE_ENV,
+    RESEARCH_LLM_ALLOWED_HOSTS_ENV,
     verify_model_available,
     KIND_COMPARISON,
     KIND_LEARNING,

@@ -16,6 +16,7 @@ from strategy.research_analyst import (
     ANALYST_REPORT_FILENAME_MARKDOWN,
     ANALYST_REPORT_FILENAME_NARRATIVE,
     ANALYST_REPORT_ID_PREFIX,
+    CLOUD_HOST_TOKENS,
     CLOUD_MODEL_TOKENS,
     DEFAULT_ANALYST_OUTPUT_DIR,
     DEFAULT_LOCAL_ENDPOINT,
@@ -38,6 +39,8 @@ from strategy.research_analyst import (
     ModelNotAvailableError,
     NARRATIVE_ID_PREFIX,
     REQUIRED_TEMPERATURE,
+    RESEARCH_LLM_ALLOW_REMOTE_ENV,
+    RESEARCH_LLM_ALLOWED_HOSTS_ENV,
     RESEARCH_LLM_ENDPOINT_ENV,
     ResearchAnalyst,
     ResearchAnalystReport,
@@ -219,6 +222,339 @@ class TestLocalLLMEndpointGuard:
         monkeypatch.delenv(RESEARCH_LLM_ENDPOINT_ENV, raising=False)
         client = LocalLLMClient(model="local-model", env={})
         assert client.endpoint == DEFAULT_LOCAL_ENDPOINT
+
+
+# ---------------------------------------------------------------------------
+# Trusted-LAN endpoint policy
+# ---------------------------------------------------------------------------
+
+
+class TestTrustedLANEndpointPolicy:
+    """Endpoint policy across every host class (loopback / private_ip /
+    public_ip / cloud_domain / hostname / unspecified) with and without
+    the RESEARCH_LLM_ALLOW_REMOTE opt-in.
+    """
+
+    def _fake_post(self):
+        return lambda u, b, t: b"{}"
+
+    # ----- loopback: always allowed -----
+
+    def test_loopback_allowed_without_opt_in(self):
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:8080",
+            model="local-model",
+            env={},
+            http_post=self._fake_post(),
+        )
+        assert client.allow_remote is False
+        assert client.allowed_hosts == ()
+
+    def test_loopback_allowed_even_when_opt_in_and_allowlist_present(self):
+        # Opt-in doesn't disable the loopback default.
+        client = LocalLLMClient(
+            endpoint="http://localhost:8080",
+            model="local-model",
+            allow_remote=True,
+            allowed_hosts=("10.100.0.13",),
+            http_post=self._fake_post(),
+        )
+        assert client.endpoint == "http://localhost:8080"
+
+    # ----- private_ip: opt-in + allowlist required -----
+
+    def test_lan_endpoint_rejected_by_default(self):
+        with pytest.raises(LocalLLMEndpointError, match="RESEARCH_LLM_ALLOW_REMOTE"):
+            LocalLLMClient(
+                endpoint="http://10.100.0.13:8080",
+                model="local-model",
+                env={},
+            )
+
+    def test_lan_endpoint_allowed_with_opt_in_and_allowlist(self):
+        client = LocalLLMClient(
+            endpoint="http://10.100.0.13:8080",
+            model="local-model",
+            allow_remote=True,
+            allowed_hosts=("10.100.0.13",),
+            http_post=self._fake_post(),
+        )
+        assert client.endpoint == "http://10.100.0.13:8080"
+        assert client.allow_remote is True
+        assert client.allowed_hosts == ("10.100.0.13",)
+
+    def test_lan_endpoint_rejected_when_opt_in_but_not_allowlisted(self):
+        with pytest.raises(LocalLLMEndpointError, match="not in RESEARCH_LLM_ALLOWED_HOSTS"):
+            LocalLLMClient(
+                endpoint="http://10.100.0.13:8080",
+                model="local-model",
+                allow_remote=True,
+                allowed_hosts=("10.100.0.5",),  # different host
+            )
+
+    def test_lan_endpoint_rejected_when_allowlist_empty(self):
+        with pytest.raises(LocalLLMEndpointError, match="not in RESEARCH_LLM_ALLOWED_HOSTS"):
+            LocalLLMClient(
+                endpoint="http://192.168.1.10:8080",
+                model="local-model",
+                allow_remote=True,
+                allowed_hosts=(),
+            )
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "http://10.0.0.1:8080",  # RFC1918 (10/8)
+            "http://172.16.0.1:8080",  # RFC1918 (172.16/12)
+            "http://192.168.1.100:8080",  # RFC1918 (192.168/16)
+            "http://[fc00::1]:8080",  # IPv6 ULA
+        ],
+    )
+    def test_various_private_ip_ranges_supported_when_allowlisted(self, endpoint):
+        from urllib.parse import urlparse
+
+        host = urlparse(endpoint).hostname
+        LocalLLMClient(
+            endpoint=endpoint,
+            model="local-model",
+            allow_remote=True,
+            allowed_hosts=(host,),
+            http_post=self._fake_post(),
+        )
+
+    # ----- public_ip: refused always -----
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "http://8.8.8.8:8080",
+            "http://1.1.1.1",
+            "http://34.117.0.1:80",  # arbitrary public GCP-shaped IP
+            "http://0.0.0.0:8080",  # unspecified — refused
+        ],
+    )
+    def test_public_ip_rejected_even_with_opt_in_and_allowlist(
+        self, endpoint
+    ):
+        from urllib.parse import urlparse
+
+        host = urlparse(endpoint).hostname
+        with pytest.raises(LocalLLMEndpointError, match="public IP"):
+            LocalLLMClient(
+                endpoint=endpoint,
+                model="local-model",
+                allow_remote=True,
+                allowed_hosts=(host,),
+            )
+
+    # ----- cloud domains: refused always -----
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://api.openai.com/v1",
+            "https://api.anthropic.com",
+            "https://claude.ai",
+            "https://chatgpt.com",
+            "https://generativelanguage.googleapis.com/v1beta",
+            "https://gemini.google.com",
+            "https://amazonaws.com",
+            "https://myproxy.openai.azure.com",
+        ],
+    )
+    def test_cloud_domain_rejected_always(self, endpoint):
+        from urllib.parse import urlparse
+
+        host = urlparse(endpoint).hostname
+        with pytest.raises(LocalLLMEndpointError, match="cloud provider"):
+            LocalLLMClient(
+                endpoint=endpoint,
+                model="local-model",
+                allow_remote=True,
+                allowed_hosts=(host,),  # even in allowlist
+            )
+
+    # ----- hostname: opt-in + allowlist required, cloud tokens still refused -----
+
+    def test_trusted_hostname_allowed_with_opt_in_and_allowlist(self):
+        client = LocalLLMClient(
+            endpoint="http://llama-box.internal:8080",
+            model="local-model",
+            allow_remote=True,
+            allowed_hosts=("llama-box.internal",),
+            http_post=self._fake_post(),
+        )
+        assert client.endpoint == "http://llama-box.internal:8080"
+
+    def test_hostname_rejected_without_opt_in(self):
+        with pytest.raises(LocalLLMEndpointError, match="RESEARCH_LLM_ALLOW_REMOTE"):
+            LocalLLMClient(
+                endpoint="http://llama-box.internal:8080",
+                model="local-model",
+                env={},
+            )
+
+    def test_hostname_rejected_when_allowlist_mismatches(self):
+        with pytest.raises(LocalLLMEndpointError, match="not in RESEARCH_LLM_ALLOWED_HOSTS"):
+            LocalLLMClient(
+                endpoint="http://llama-box.internal:8080",
+                model="local-model",
+                allow_remote=True,
+                allowed_hosts=("other-box.internal",),
+            )
+
+    # ----- schemes -----
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        ["ftp://127.0.0.1", "//127.0.0.1", "127.0.0.1"],
+    )
+    def test_invalid_scheme_rejected(self, endpoint):
+        # An empty endpoint string is NOT a scheme test — it triggers
+        # the env / default fallback path, which is exercised
+        # separately.  Only truly-invalid schemes go here.
+        with pytest.raises(LocalLLMEndpointError):
+            LocalLLMClient(endpoint=endpoint, model="local-model", env={})
+
+
+class TestTrustedLANEnvResolution:
+    """Verify RESEARCH_LLM_ALLOW_REMOTE / RESEARCH_LLM_ALLOWED_HOSTS
+    are correctly picked up from the process environment."""
+
+    def _fake_post(self):
+        return lambda u, b, t: b"{}"
+
+    def test_opt_in_from_env(self):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://10.100.0.13:8080",
+            RESEARCH_LLM_ALLOW_REMOTE_ENV: "true",
+            RESEARCH_LLM_ALLOWED_HOSTS_ENV: "10.100.0.13",
+        }
+        client = LocalLLMClient(
+            model="local-model",
+            env=env,
+            http_post=self._fake_post(),
+        )
+        assert client.allow_remote is True
+        assert client.allowed_hosts == ("10.100.0.13",)
+
+    @pytest.mark.parametrize("truthy", ["true", "TRUE", "1", "yes", "on"])
+    def test_various_truthy_values_accepted(self, truthy):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://10.100.0.13:8080",
+            RESEARCH_LLM_ALLOW_REMOTE_ENV: truthy,
+            RESEARCH_LLM_ALLOWED_HOSTS_ENV: "10.100.0.13",
+        }
+        LocalLLMClient(
+            model="local-model", env=env, http_post=self._fake_post()
+        )
+
+    @pytest.mark.parametrize(
+        "falsy", ["false", "FALSE", "0", "no", "off", "", "maybe"]
+    )
+    def test_only_documented_truthy_values_enable_remote(self, falsy):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://10.100.0.13:8080",
+            RESEARCH_LLM_ALLOW_REMOTE_ENV: falsy,
+            RESEARCH_LLM_ALLOWED_HOSTS_ENV: "10.100.0.13",
+        }
+        with pytest.raises(LocalLLMEndpointError):
+            LocalLLMClient(model="local-model", env=env)
+
+    def test_allowed_hosts_comma_separated(self):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://10.100.0.13:8080",
+            RESEARCH_LLM_ALLOW_REMOTE_ENV: "true",
+            RESEARCH_LLM_ALLOWED_HOSTS_ENV: "10.100.0.5, 10.100.0.13 , 192.168.1.1",
+        }
+        client = LocalLLMClient(
+            model="local-model",
+            env=env,
+            http_post=self._fake_post(),
+        )
+        assert client.allowed_hosts == (
+            "10.100.0.5",
+            "10.100.0.13",
+            "192.168.1.1",
+        )
+
+    def test_explicit_kwargs_win_over_env(self):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://10.100.0.13:8080",
+            RESEARCH_LLM_ALLOW_REMOTE_ENV: "false",
+            RESEARCH_LLM_ALLOWED_HOSTS_ENV: "",
+        }
+        # Even though env forbids remote, kwargs enable it.
+        client = LocalLLMClient(
+            model="local-model",
+            env=env,
+            allow_remote=True,
+            allowed_hosts=("10.100.0.13",),
+            http_post=self._fake_post(),
+        )
+        assert client.allow_remote is True
+        assert client.allowed_hosts == ("10.100.0.13",)
+
+
+class TestModelDiscoveryOverLAN:
+    """Model discovery must work against an allow-listed LAN endpoint
+    using mocked responses (never touching the network).
+    """
+
+    def test_discovery_over_allowed_lan(self):
+        response = json.dumps(
+            {"data": [{"id": "qwen2.5-coder"}, {"id": "llama3.1"}]}
+        ).encode()
+        get, _ = _http_get_returning({"/v1/models": response})
+        client = LocalLLMClient(
+            endpoint="http://10.100.0.13:8080",
+            model="qwen2.5-coder",
+            allow_remote=True,
+            allowed_hosts=("10.100.0.13",),
+            http_get=get,
+        )
+        # Discovery + verification round-trip
+        available = client.list_models()
+        assert available == ["llama3.1", "qwen2.5-coder"]
+        checked, closest = verify_model_available(client, "qwen2.5-coder")
+        assert checked == available
+        assert closest is None
+
+    def test_discovery_over_lan_reports_missing_model_with_details(self):
+        response = json.dumps(
+            {"data": [{"id": "llama3.1"}, {"id": "phi3:mini"}]}
+        ).encode()
+        get, _ = _http_get_returning({"/v1/models": response})
+        client = LocalLLMClient(
+            endpoint="http://10.100.0.13:8080",
+            model="llama3-1",  # near miss
+            allow_remote=True,
+            allowed_hosts=("10.100.0.13",),
+            http_get=get,
+        )
+        with pytest.raises(ModelNotAvailableError) as excinfo:
+            verify_model_available(client, "llama3-1")
+        exc = excinfo.value
+        assert exc.endpoint == "http://10.100.0.13:8080"
+        assert "llama3.1" in exc.available
+        assert exc.closest == "llama3.1"
+
+
+class TestTrustedLANConstants:
+    def test_cloud_host_tokens_cover_expected(self):
+        for token in (
+            "openai.com",
+            "anthropic.com",
+            "claude.ai",
+            "chatgpt.com",
+            "azurewebsites.net",
+            "amazonaws.com",
+        ):
+            assert token in CLOUD_HOST_TOKENS
+
+    def test_env_var_names(self):
+        assert RESEARCH_LLM_ALLOW_REMOTE_ENV == "RESEARCH_LLM_ALLOW_REMOTE"
+        assert RESEARCH_LLM_ALLOWED_HOSTS_ENV == "RESEARCH_LLM_ALLOWED_HOSTS"
 
 
 class TestLocalLLMModelGuard:

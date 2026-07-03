@@ -258,3 +258,94 @@ through the `explicit=` parameter of `resolve_model`.  Do NOT assume
 Hermes exports a shared model env var — the resolver deliberately
 supports explicit arguments so Hermes can hand a specific model to a
 specific call without polluting the process environment.
+
+---
+
+## Research LLM endpoint policy
+
+The Local LLM Research Analyst (`strategy/research_analyst.py`) only
+talks to a local inference server.  Three env vars govern which
+endpoints are accepted:
+
+| Env var | Purpose | Default |
+|---|---|---|
+| `RESEARCH_LLM_ENDPOINT` | Base URL of the inference server | `http://127.0.0.1:8080` |
+| `RESEARCH_LLM_ALLOW_REMOTE` | Opt-in to allow a non-loopback endpoint | `false` |
+| `RESEARCH_LLM_ALLOWED_HOSTS` | Comma-separated allowlist of trusted hosts | *(empty)* |
+
+### Loopback mode — the default
+
+Out of the box the client accepts only loopback hosts:
+`127.0.0.1`, `localhost`, `::1`.  Anything else raises
+`LocalLLMEndpointError` at construction time.  This is the safest
+mode and covers a local Ollama, llama.cpp, LM Studio, or llama-swap
+installation running on the same box.
+
+Example `.env.research`:
+
+```
+RESEARCH_LLM_ENDPOINT=http://127.0.0.1:8080
+RESEARCH_AI_MODEL=qwen2.5-coder
+```
+
+### Trusted-LAN mode — explicit opt-in
+
+Larger local rigs may run the LLM on a separate LAN machine.
+Enable this by setting BOTH:
+
+- `RESEARCH_LLM_ALLOW_REMOTE=true` (also accepts `1`, `yes`, `on`)
+- `RESEARCH_LLM_ALLOWED_HOSTS=<comma-separated hosts>`
+
+Both must be present.  The client rejects every non-loopback
+endpoint whose host is not in the allowlist, even when opt-in is
+enabled.
+
+Example — a llama.cpp box at `10.100.0.13:8080`:
+
+```
+RESEARCH_LLM_ENDPOINT=http://10.100.0.13:8080
+RESEARCH_LLM_ALLOW_REMOTE=true
+RESEARCH_LLM_ALLOWED_HOSTS=10.100.0.13
+RESEARCH_AI_MODEL=qwen2.5-coder
+```
+
+Allowed host classes when opt-in is enabled:
+
+- **RFC1918 private IPs:** `10.0.0.0/8`, `172.16.0.0/12`,
+  `192.168.0.0/16`
+- **IPv6 unique local addresses (ULA):** `fc00::/7`
+- **Trusted internal hostnames:** any DNS name in the allowlist
+  that does NOT match a cloud provider substring
+
+### Never allowed — cloud endpoints
+
+Regardless of `RESEARCH_LLM_ALLOW_REMOTE`, the client refuses any
+endpoint host that matches a cloud-provider substring
+(`openai.com`, `anthropic.com`, `claude.ai`, `chatgpt.com`,
+`googleapis.com`, `gemini.google.com`, `google.com`,
+`azurewebsites.net`, `amazonaws.com`, `cohere.ai`, `huggingface.co`,
+`replicate.com`, etc.).  Public IPv4 / IPv6 addresses are also
+refused.  The unspecified addresses `0.0.0.0` and `::` are refused.
+
+The Research Analyst is a validation / replay / research tool.  It
+never queries a cloud provider, regardless of allowlist state or
+opt-in.  This mirrors the same isolation invariant that governs
+`strategy/research_account.py` (the Alpaca account client).
+
+### Never allowed — cloud model names
+
+Independent of endpoint policy, the client refuses any model name
+containing `openai`, `anthropic`, `google`, `azure`, `aws`,
+`gemini`, `claude`, or `chatgpt`.  This is a defense-in-depth guard
+against a compromised local endpoint that would proxy to a cloud
+model.
+
+### Endpoint failure modes and their messages
+
+| Failure | Message pattern |
+|---|---|
+| Missing `http://` / `https://` scheme | `must start with http:// or https://` |
+| Cloud provider substring in host | `matches a cloud provider domain` |
+| Public IP or `0.0.0.0` | `is a public IP address` |
+| Non-loopback host without opt-in | `is not loopback and RESEARCH_LLM_ALLOW_REMOTE is not enabled` |
+| Non-loopback host missing from allowlist | `is not in RESEARCH_LLM_ALLOWED_HOSTS` |

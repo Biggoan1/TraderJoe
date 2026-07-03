@@ -39,6 +39,7 @@ validation, replay, or research.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import urllib.parse
@@ -68,14 +69,20 @@ from strategy.model_config import CONTEXT_RESEARCH, resolve_model
 
 
 RESEARCH_LLM_ENDPOINT_ENV = "RESEARCH_LLM_ENDPOINT"
-DEFAULT_LOCAL_ENDPOINT = "http://127.0.0.1:11434"
+RESEARCH_LLM_ALLOW_REMOTE_ENV = "RESEARCH_LLM_ALLOW_REMOTE"
+RESEARCH_LLM_ALLOWED_HOSTS_ENV = "RESEARCH_LLM_ALLOWED_HOSTS"
+
+DEFAULT_LOCAL_ENDPOINT = "http://127.0.0.1:8080"
 LOOPBACK_HOSTS: Tuple[str, ...] = ("127.0.0.1", "localhost", "::1")
+
+# Truthy values accepted for RESEARCH_LLM_ALLOW_REMOTE.
+_ALLOW_REMOTE_TRUTHY: Tuple[str, ...] = ("true", "1", "yes", "on")
 
 DEFAULT_TIMEOUT_SECONDS = 60.0
 REQUIRED_TEMPERATURE = 0.0
 
 # Cloud provider tokens we refuse in a model name — defense-in-depth
-# alongside the loopback endpoint check.
+# alongside the endpoint host check.
 CLOUD_MODEL_TOKENS: Tuple[str, ...] = (
     "openai",
     "anthropic",
@@ -85,6 +92,26 @@ CLOUD_MODEL_TOKENS: Tuple[str, ...] = (
     "gemini",
     "claude",
     "chatgpt",
+)
+
+# Cloud provider host substrings we refuse in an endpoint URL —
+# defense-in-depth against a compromised allowlist.
+CLOUD_HOST_TOKENS: Tuple[str, ...] = (
+    "openai.com",
+    "openai.azure.com",
+    "anthropic.com",
+    "claude.ai",
+    "chatgpt.com",
+    "chat.openai.com",
+    "googleapis.com",
+    "generativelanguage.googleapis.com",
+    "gemini.google.com",
+    "google.com",
+    "azurewebsites.net",
+    "amazonaws.com",
+    "cohere.ai",
+    "huggingface.co",
+    "replicate.com",
 )
 
 
@@ -264,24 +291,150 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+HOST_CLASS_LOOPBACK = "loopback"
+HOST_CLASS_PRIVATE_IP = "private_ip"
+HOST_CLASS_PUBLIC_IP = "public_ip"
+HOST_CLASS_CLOUD_DOMAIN = "cloud_domain"
+HOST_CLASS_HOSTNAME = "hostname"
+
+
+def _host_contains_cloud_token(host: str) -> bool:
+    lower = host.lower()
+    for token in CLOUD_HOST_TOKENS:
+        if token in lower:
+            return True
+    return False
+
+
+def _classify_host(host: str) -> str:
+    """Classify an endpoint host into one of five categories.
+
+    The classification informs the endpoint policy check.  Cloud host
+    tokens are always rejected regardless of allowlist state.  Public
+    IPs are always rejected.  Loopback is always allowed.  Private IPs
+    and hostnames require explicit opt-in AND allowlist membership.
+    """
+    host = host.lower()
+    if _host_contains_cloud_token(host):
+        return HOST_CLASS_CLOUD_DOMAIN
+    if host in LOOPBACK_HOSTS:
+        return HOST_CLASS_LOOPBACK
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        # Not an IP literal — treat as a hostname
+        return HOST_CLASS_HOSTNAME
+    # Order matters: unspecified addresses (0.0.0.0, ::) are also
+    # classified as "private" by ipaddress — we refuse them
+    # explicitly because they identify an interface bind, not a
+    # trustworthy peer.
+    if addr.is_unspecified:
+        return HOST_CLASS_PUBLIC_IP
+    if addr.is_loopback:
+        return HOST_CLASS_LOOPBACK
+    if addr.is_private:
+        return HOST_CLASS_PRIVATE_IP
+    return HOST_CLASS_PUBLIC_IP
+
+
 def _is_loopback_endpoint(endpoint: str) -> bool:
-    parsed = urlparse(endpoint)
+    """Kept for backward compat; returns True only for loopback."""
+    try:
+        parsed = urlparse(endpoint)
+    except ValueError:
+        return False
     host = (parsed.hostname or "").lower()
-    return host in LOOPBACK_HOSTS
+    return _classify_host(host) == HOST_CLASS_LOOPBACK
 
 
-def _assert_loopback_endpoint(endpoint: str) -> None:
+def _assert_endpoint_allowed(
+    endpoint: str,
+    allow_remote: bool = False,
+    allowed_hosts: Sequence[str] = (),
+) -> None:
+    """Validate that ``endpoint`` is safe to reach.
+
+    Policy:
+
+    * Loopback endpoints (``127.0.0.1`` / ``localhost`` / ``::1``) are
+      always allowed.
+    * Cloud provider host substrings are always refused.
+    * Public IPv4 / IPv6 addresses are always refused, even with
+      ``allow_remote=True`` and an allowlist match.
+    * Private IPs (RFC1918 / CG-NAT / ULA / link-local) and
+      hostnames are allowed ONLY when ``allow_remote`` is ``True`` AND
+      the host is in ``allowed_hosts``.
+    """
     if not endpoint:
         raise LocalLLMEndpointError("endpoint is required")
     if not endpoint.startswith(("http://", "https://")):
         raise LocalLLMEndpointError(
             f"endpoint {endpoint!r} must start with http:// or https://"
         )
-    if not _is_loopback_endpoint(endpoint):
+    try:
+        parsed = urlparse(endpoint)
+    except ValueError as exc:
         raise LocalLLMEndpointError(
-            f"endpoint {endpoint!r} is not a loopback address; "
-            f"expected one of {LOOPBACK_HOSTS}"
+            f"endpoint {endpoint!r} could not be parsed: {exc}"
+        ) from exc
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise LocalLLMEndpointError(
+            f"endpoint {endpoint!r} has no host component"
         )
+    kind = _classify_host(host)
+
+    if kind == HOST_CLASS_CLOUD_DOMAIN:
+        raise LocalLLMEndpointError(
+            f"endpoint host {host!r} matches a cloud provider domain "
+            f"({CLOUD_HOST_TOKENS}); the Research Analyst never queries "
+            f"a cloud provider"
+        )
+
+    if kind == HOST_CLASS_PUBLIC_IP:
+        raise LocalLLMEndpointError(
+            f"endpoint host {host!r} is a public IP address; the "
+            f"Research Analyst refuses public endpoints even when "
+            f"RESEARCH_LLM_ALLOW_REMOTE is set"
+        )
+
+    if kind == HOST_CLASS_LOOPBACK:
+        return
+
+    # Non-loopback (private_ip or hostname) — require opt-in + allowlist.
+    if not allow_remote:
+        raise LocalLLMEndpointError(
+            f"endpoint host {host!r} is not loopback and "
+            f"RESEARCH_LLM_ALLOW_REMOTE is not enabled; loopback hosts "
+            f"({LOOPBACK_HOSTS}) work by default, or set "
+            f"RESEARCH_LLM_ALLOW_REMOTE=true and add {host!r} to "
+            f"RESEARCH_LLM_ALLOWED_HOSTS to explicitly trust a local "
+            f"LAN endpoint"
+        )
+
+    allowlist = tuple(h.strip().lower() for h in allowed_hosts if h.strip())
+    if host not in allowlist:
+        raise LocalLLMEndpointError(
+            f"endpoint host {host!r} is not in RESEARCH_LLM_ALLOWED_HOSTS "
+            f"(configured: {list(allowlist) or 'empty'}); add {host!r} to "
+            f"the comma-separated list to explicitly trust it"
+        )
+
+
+# Backward-compat alias for tests / callers written against the older
+# loopback-only guard.
+def _assert_loopback_endpoint(endpoint: str) -> None:
+    _assert_endpoint_allowed(endpoint, allow_remote=False, allowed_hosts=())
+
+
+def _parse_allow_remote(env: Mapping[str, str]) -> bool:
+    raw = env.get(RESEARCH_LLM_ALLOW_REMOTE_ENV, "").strip().lower()
+    return raw in _ALLOW_REMOTE_TRUTHY
+
+
+def _parse_allowed_hosts(env: Mapping[str, str]) -> Tuple[str, ...]:
+    raw = env.get(RESEARCH_LLM_ALLOWED_HOSTS_ENV, "")
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
 
 
 def _assert_local_model(model: str) -> None:
@@ -392,12 +545,28 @@ class LocalLLMClient:
         http_post: Optional[HttpPostCallable] = None,
         http_get: Optional[HttpGetCallable] = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        allow_remote: Optional[bool] = None,
+        allowed_hosts: Optional[Sequence[str]] = None,
     ):
         source = env if env is not None else os.environ
         resolved_endpoint = endpoint or source.get(
             RESEARCH_LLM_ENDPOINT_ENV, DEFAULT_LOCAL_ENDPOINT
         )
-        _assert_loopback_endpoint(resolved_endpoint)
+        resolved_allow_remote = (
+            allow_remote
+            if allow_remote is not None
+            else _parse_allow_remote(source)
+        )
+        resolved_allowed_hosts: Tuple[str, ...] = (
+            tuple(allowed_hosts)
+            if allowed_hosts is not None
+            else _parse_allowed_hosts(source)
+        )
+        _assert_endpoint_allowed(
+            resolved_endpoint,
+            allow_remote=resolved_allow_remote,
+            allowed_hosts=resolved_allowed_hosts,
+        )
         if temperature != REQUIRED_TEMPERATURE:
             raise LocalLLMConfigError(
                 f"temperature must be {REQUIRED_TEMPERATURE} "
@@ -408,6 +577,8 @@ class LocalLLMClient:
         if model:
             _assert_local_model(model)
         self._endpoint = resolved_endpoint.rstrip("/")
+        self._allow_remote = bool(resolved_allow_remote)
+        self._allowed_hosts = resolved_allowed_hosts
         self._default_model = model
         self._temperature = float(temperature)
         self._http_post: HttpPostCallable = (
@@ -422,6 +593,14 @@ class LocalLLMClient:
     @property
     def endpoint(self) -> str:
         return self._endpoint
+
+    @property
+    def allow_remote(self) -> bool:
+        return self._allow_remote
+
+    @property
+    def allowed_hosts(self) -> Tuple[str, ...]:
+        return self._allowed_hosts
 
     @property
     def default_model(self) -> Optional[str]:
