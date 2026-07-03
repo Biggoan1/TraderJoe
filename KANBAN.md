@@ -70,6 +70,6 @@ Hermes is not orchestrating this work item. Current repository snapshot:
 | `t_phase4_learning_reports` | Phase 4: Learning Report Generation | Phase 4 | Done |
 | `t_phase4_validation` | Phase 4: End-to-End Learning System Validation | Phase 4 | Done |
 | `t_phase5_plan` | Phase 5: Research Execution Technical Design | Phase 5 | Done |
-| `t_phase5_research_account_api` | Phase 5: Isolated Research Alpaca Client | Phase 5 | Review |
-| `t_phase5_local_llm_research_assistant` | Phase 5: Local LLM Research Assistant | Phase 5 | Backlog |
+| `t_phase5_research_account_api` | Phase 5: Isolated Research Alpaca Client | Phase 5 | Done |
+| `t_phase5_local_llm_research_assistant` | Phase 5: Local LLM Research Assistant | Phase 5 | Ready |
 | `t_phase5_two_month_validation_run` | Phase 5: Two-Month Historical Validation | Phase 5 | Backlog |

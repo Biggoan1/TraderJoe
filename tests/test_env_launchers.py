@@ -339,13 +339,25 @@ class TestEnvExample:
         assert "PRODUCTION_AI_MODEL" in source
 
     def test_env_example_holds_no_real_credentials(self):
+        """Scan `.env.example` for credential-shaped strings.
+
+        Uses shape-based patterns instead of specific rotated-key
+        literals so no historical credential value ever needs to be
+        tracked in the repo.  The patterns cover the two Alpaca
+        credential shapes and the AWS access-key shape.
+        """
         source = _read(".env.example")
-        for pattern in (
-            r"PKIZAKAVSYD6VNX2DNL3DZ5L5P",
-            r"6hfir5D8HSoDdtz7bMsCVdDWE25hvFjKDp8jDFoh7St2",
+        for label, pattern in (
+            ("Alpaca PK-prefixed API key", r"PK[A-Z0-9]{18,32}"),
+            (
+                "quoted 40-56-char mixed-case alphanumeric (Alpaca secret shape)",
+                r"['\"][A-Za-z0-9]{40,56}['\"]",
+            ),
+            ("AWS access key", r"AKIA[A-Z0-9]{16,}"),
         ):
             assert not re.search(pattern, source), (
-                f".env.example must not contain {pattern}"
+                f".env.example must not contain {label} shape "
+                f"(pattern={pattern!r})"
             )
 
     def test_env_example_marks_production_as_gated(self):

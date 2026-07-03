@@ -1103,7 +1103,7 @@ read-only.  Order-path behavior is untouched throughout.
   the three implementation cards.
 
 #### `t_phase5_research_account_api` — Isolated Research Alpaca Client
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Add a new module (candidate: `strategy/research_account.py`)
   containing `ResearchAccountConfig` and `ResearchAccountClient`.
   The client exposes only historical-data reads (bars, calendar,
@@ -1126,22 +1126,42 @@ read-only.  Order-path behavior is untouched throughout.
   `ResearchAccountConfig` (env-var *names* only), `ResearchAccountClient`
   (read-only: `fetch_bars`, `list_calendar`, `paper_account_info`),
   `ResearchAccountRequest` (frozen record with `redacted_dict` masking
-  credential headers), `ResearchAccountConfigError`, and
-  `ResearchAccountRequestError`.  Env vars are strictly
-  `RESEARCH_ALPACA_API_KEY` / `_SECRET_KEY` / `_ENDPOINT`;
-  `FORBIDDEN_ENV_FALLBACKS` covers `ALPACA_*` and `APCA_*` and the
-  config rejects any env-var name that does not start with
-  `RESEARCH_ALPACA`.  The client refuses to fall back to `ALPACA_*`,
-  masks credentials in `to_dict` / `redacted_dict`, sorts query
-  parameters for deterministic URL construction, and requires an
-  `http://` / `https://` endpoint.  Default HTTP transport uses
+  credential headers plus `__repr__` / `__str__` overrides so
+  credentials never surface in logs or tracebacks),
+  `ResearchAccountConfigError`, and `ResearchAccountRequestError`.
+  Env vars are strictly `RESEARCH_ALPACA_API_KEY` / `_SECRET_KEY` /
+  `_ENDPOINT`; `FORBIDDEN_ENV_FALLBACKS` covers `ALPACA_*` and
+  `APCA_*` and the config rejects any env-var name that does not
+  start with `RESEARCH_ALPACA`.  `ResearchAccountConfig.from_env()`
+  builds a config that fails fast when any credential is missing.
+  The client refuses to fall back to `ALPACA_*`, masks credentials
+  in `to_dict` / `redacted_dict`, sorts query parameters for
+  deterministic URL construction, and requires an `http://` /
+  `https://` endpoint.  Default HTTP transport uses
   `urllib.request.urlopen` (tests inject a fake to avoid the
   network).  The module writes no files, imports no live-runner
-  module, and never touches `strategy/config.py`.
+  module, and never touches `strategy/config.py`.  Supporting
+  infrastructure landed alongside: env-file launchers under
+  `scripts/`, systemd examples under `docs/systemd/`, context-aware
+  model resolution via `strategy/model_config.py`, and full
+  isolation docs at `docs/agent/env-isolation.md`.
+- **Validation outcome:** 1061 tests passing (Research: 70 +
+  model config: 25 + env launchers: 50; regressed baseline: 916
+  → same behavior); no credential-shaped strings tracked in any
+  file (`.env.example` scanned by shape, not literals);
+  `.env.paper` / `.env.crypto` / `.env.research` / `.env.production`
+  all gitignored while `.env.example` remains tracked; live runner
+  code (comments/docstrings stripped) contains no
+  `RESEARCH_ALPACA` / `RESEARCH_AI_MODEL` / `.env.research` /
+  `.env.production` / `PRODUCTION_AI_MODEL` references; both
+  live-runner `PAPER = True` guards preserved; no
+  `scripts/run-production` and no installable production systemd
+  unit; commit `e5db721` (implementation) plus `de8ea00`
+  (credential-namespace security refactor) plus `645e259`
+  (isolation docs) plus `021351f` (launchers + model config).
 
 #### `t_phase5_local_llm_research_assistant` — Local LLM Research Assistant
-- **Status:** Backlog (depends on `t_phase5_research_account_api`
-  for shared safety patterns; does not depend on it functionally)
+- **Status:** Ready
 - **Scope:** Add a `LocalLLMClient` protocol and a concrete
   implementation targeting a local endpoint (Ollama / LM Studio).
   Add `LLMSummary` (frozen dataclass with model id, prompt hash,

@@ -6,10 +6,74 @@ Trader Joe release history.
 
 ## v0.24.0 — Phase 5: Isolated Research Alpaca Client
 
-**Date:** 2026-07-02
+**Date:** 2026-07-03
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase5_research_account_api`
+**Commits:** `e5db721` (implementation) → `de8ea00` (credential-
+namespace security refactor + `.env.example` + `.gitignore`
+whitelist) → `645e259` (env-isolation docs + `PAPER = True`
+safeguard comments) → `021351f` (launchers + systemd examples +
+model config), plus this validation board update
+
+### Validation
+- 1061 tests passing (0 failing) on 2026-07-03
+- Working tree clean prior to validation commit
+- **Read-only client:** enumeration test guards against
+  `submit_order`, `place_order`, `cancel_order`, `close_position`,
+  `create_order`, `buy`, `sell`, `replace_order` attributes; only
+  `fetch_bars`, `list_calendar`, `paper_account_info` exposed
+- **Credentials isolated to `RESEARCH_ALPACA_*`:** config rejects
+  any env-var name that does not start with `RESEARCH_ALPACA`;
+  `FORBIDDEN_ENV_FALLBACKS` covers `ALPACA_*` and `APCA_*` and is
+  disjoint from `REQUIRED_ENV_VARS`; `from_env()` fails fast when
+  the namespace is missing; `resolve_credentials` refuses to fall
+  back to `ALPACA_*` / `APCA_*`
+- **No secrets tracked:** repository-wide `git grep` on tracked
+  files finds no live Alpaca `PK*` credentials, no rotated-key
+  literals, no AWS `AKIA*`, no `Bearer <token>`; test
+  `test_env_example_holds_no_real_credentials` now scans by
+  Alpaca / AWS credential shape (not by literal), so no
+  credential-shaped string ever needs to be tracked
+- **`.env.*` remain ignored:** `.gitignore` ignores `.env` and
+  every `.env.*` variant while explicitly whitelisting
+  `.env.example`; verified via `git check-ignore` for all four
+  context env files
+- **Launchers load only matching env files:** parametric tests
+  confirm `run-paper` / `run-crypto` / `run-research` each
+  reference their own env file, refuse to source `.env` or
+  `.env.production` outside a documentation comment, and refuse
+  to run when the target env file is missing; there is no
+  `scripts/run-production`
+- **Production remains disabled/guarded:** both live-runner
+  `PAPER = True` guards are preserved; no `.env.production`
+  loading in any live path; no `scripts/run-production`;
+  `traderjoe-production.service.example` ships with layered
+  guards (`.example` suffix + `ExecStart=/bin/false` +
+  `ConditionPathExists=` + omitted `[Install]` section);
+  live-runner code (comments/docstrings stripped) contains no
+  `RESEARCH_ALPACA` / `RESEARCH_AI_MODEL` / `.env.research` /
+  `.env.production` / `PRODUCTION_AI_MODEL` references
+- **Model config is context-aware:** `strategy/model_config.py`
+  implements a three-tier precedence (`explicit > env > default`)
+  across `PAPER_AI_MODEL` / `CRYPTO_AI_MODEL` /
+  `RESEARCH_AI_MODEL` / `PRODUCTION_AI_MODEL`; parametric tests
+  confirm each context reads only its own env var; the helper
+  never hardcodes a model name; `trader.py` and `crypto_trader.py`
+  preserve their pre-env-var default via a local
+  `_LEGACY_MODEL_DEFAULT` so behavior is unchanged when env vars
+  are unset
+- **No feature flags enabled:** global `FeatureFlags` singleton
+  remains `all_disabled` after client + config runs; module
+  never imports `strategy.config`
+- **No buy/sell logic changed:** runner, scheduler, Telegram,
+  CLI, and plugin behavior unchanged; broker/order paths untouched
+  beyond the two-line AI_MODEL wiring and the safeguard comment
+  blocks at `PAPER = True`
+- **Working tree clean:** confirmed pre- and post-commit
+- Card `t_phase5_research_account_api` moved to Done
+- Card `t_phase5_local_llm_research_assistant` unblocked and moved
+  to Ready
 
 ### Added
 - `strategy/research_account.py` — read-only client for the
