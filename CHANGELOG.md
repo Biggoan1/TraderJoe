@@ -4,6 +4,74 @@ Trader Joe release history.
 
 ---
 
+## v0.20.0 — Phase 4: Feature Importance Analysis
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase4_feature_importance`
+
+### Added
+- `strategy/feature_importance.py` — per-feature Pearson-r importance
+  scoring with Fisher z-transform confidence intervals
+- `FeatureObservation` frozen dataclass with feature/outcome
+  timestamps and a `has_lookahead()` guard
+- `FeatureImportanceScore` frozen dataclass with method,
+  sample size, CI, label, `flagged` boolean, and structured flag
+  reasons (`low_sample`, `zero_variance`, `ci_spans_zero`)
+- `pearson_r(x, y)` and `fisher_z_ci(r, n, confidence_level)`
+  helpers (clip to `(-1, 1)` to keep `atanh` finite; return
+  `(r, r)` when `n < 4`)
+- `filter_lookahead_observations` partitions inputs into kept and
+  dropped
+- `analyze_feature_importance(observations, feature_names, ...)`:
+  Pearson r + Fisher z CI per feature, ranked by `|score|`
+  descending with feature-name asc tiebreak, rejects look-ahead by
+  default with a `ValueError`
+- `importance_stable_hash` order-independent deterministic hash
+
+### Tests
+- `tests/test_feature_importance.py` — 52 tests covering:
+  - `FeatureObservation` roundtrip and validation errors;
+    `has_lookahead` at strictly-before, exact-equal, and after
+    timestamps
+  - `FeatureImportanceScore` roundtrip; `is_significant` at CI
+    boundary conditions; every validation error
+  - `pearson_r`: perfect positive/negative correlation, zero
+    variance, empty and single-value inputs, length-mismatch error
+  - `fisher_z_ci`: symmetric around zero at r=0, widens with higher
+    confidence, shrinks with larger samples, bounded at r=±1,
+    flat interval for n<4
+  - `filter_lookahead_observations` partitions correctly on empty
+    and mixed input
+  - `analyze_feature_importance`: perfect positive/negative
+    correlation returns r=±1 with `LABEL_VALIDATED`; low sample
+    flagged `low_sample`; constant feature flagged
+    `zero_variance`; uncorrelated data flagged `ci_spans_zero`;
+    ranking by `|score|`; missing feature yields zero-sample record;
+    look-ahead rejection by default; `reject_lookahead=False` skips
+    the guard; duplicate feature names deduplicated; deterministic
+    output; confidence-level propagation; unsupported confidence
+    rejected; negative floor rejected
+  - `importance_stable_hash` deterministic and order-independent
+  - Observational-only: no `alpaca`, `place_order`, `submit_order`,
+    `TradingClient`, `api_key`, or `yfinance` references; terminology
+    check; module never mutates global feature flags; never imports
+    `strategy.config`; import-time exclusion of `trader_cli`,
+    `trader`, `crypto_trader`, `telegram_approvals`
+- 814 passing total (0 failures)
+
+### Notes
+- Module is behavior-neutral: production Champion path is unchanged;
+  runner, scheduler, Telegram, CLI, and plugin behavior untouched
+- No feature flags enabled; module never imports `strategy.config`
+- No broker credentials, HTTP calls, or historical validation paper
+  account wiring
+- Follow-up cards remain in Backlog: `t_phase4_weight_recommender`,
+  `t_phase4_learning_reports`, `t_phase4_validation`
+
+---
+
 ## v0.19.0 — Phase 4: Historical Pattern Discovery
 
 **Date:** 2026-07-02

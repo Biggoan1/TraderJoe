@@ -751,7 +751,7 @@ config.
   remain all disabled; commit `3711453`.
 
 #### `t_phase4_feature_importance` — Feature Importance Analysis
-- **Status:** Ready
+- **Status:** Review
 - **Scope:** Correlate score components, disagreement kinds, and
   market-context features with realized outcomes across the harness
   event windows. Produce ranked `FeatureImportanceScore` records.
@@ -761,6 +761,18 @@ config.
 - **Validation:** Tests for methodology metadata, sample-size flagging,
   deterministic ordering, and rejection of look-ahead inputs (features
   computed after the outcome window).
+- **Implementation note:** `strategy/feature_importance.py` adds
+  `FeatureObservation` (with `feature_timestamp` and
+  `outcome_timestamp` bookkeeping and a `has_lookahead()` guard),
+  `FeatureImportanceScore` (with `method`, sample size, Fisher-z
+  Pearson CI, label, and a `flagged` boolean carrying `low_sample`
+  / `zero_variance` / `ci_spans_zero` reasons), and
+  `analyze_feature_importance` (Pearson r + Fisher z CI, sorted by
+  `|score|` descending with feature-name tiebreak). Look-ahead is
+  rejected by default with a `ValueError`; callers can pre-clean via
+  `filter_lookahead_observations` and pass `reject_lookahead=False`.
+  Reuses stats-engine confidence-level plumbing.  Never imports
+  `strategy.config`; never references any order-path module.
 
 #### `t_phase4_weight_recommender` — Strategy Weight Recommender
 - **Status:** Backlog (depends on `t_phase4_feature_importance`)
