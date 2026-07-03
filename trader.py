@@ -22,6 +22,29 @@ import telegram_approvals
 
 load_dotenv(".env")
 
+# ---------------------------------------------------------------------------
+# PRODUCTION SAFEGUARD — DO NOT FLIP WITHOUT AN ApprovalRecord
+# ---------------------------------------------------------------------------
+# ``PAPER`` gates every ``TradingClient(..., paper=PAPER)`` construction in
+# this file.  Setting ``PAPER = False`` promotes the runner to live trading
+# with real money.
+#
+# Before this line may be changed to ``False``:
+#   1. An ApprovalRecord (see ``strategy/promotion_gates.py``) must exist
+#      naming approver, dated approval, flag scope, monitoring dashboard,
+#      and rollback plan.
+#   2. The relevant PromotionEntry must sit at STATE_APPROVED or
+#      STATE_PRODUCTION with no triggered rollback alerts.
+#   3. Walk-forward + paper-trading evidence per ROADMAP
+#      "v1.0 Production Readiness" must pass.
+#   4. `.env.production` must be populated with the approved credentials
+#      in the same commit that flips this constant.
+#   5. The approving ApprovalRecord id must be cited in the PR body.
+#
+# The Research Alpaca account (``strategy/research_account.py``,
+# ``RESEARCH_ALPACA_*`` env namespace) MUST NEVER supply credentials to
+# this runner.  See ``docs/agent/env-isolation.md``.
+# ---------------------------------------------------------------------------
 PAPER = True
 AGENT_NAME = "Trader Joe"
 AI_MODEL = "gpt-5-mini"

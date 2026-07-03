@@ -13,6 +13,9 @@ Read only the documents needed for the current task.
   read `docs/agent/trading-reference.md`.
 - Hermes Gateway, Telegram polling, cron jobs, service status, rollback, or
   token rotation: read `docs/agent/operations.md`.
+- Environment files (`.env.paper` / `.env.crypto` / `.env.research` /
+  `.env.production`), credential isolation, or the pre-live safeguards
+  around `PAPER = True`: read `docs/agent/env-isolation.md`.
 - Hermes Agent plugin migration or integration architecture: read
   `docs/agent/hermes-integration.md`.
 - Sprint planning, feature flags, roadmap, version, or current project state:
