@@ -45,4 +45,4 @@
 - Phase 5: complete (4/4 complete)
 - Phase 5 follow-ups (Done): `t_phase5_rs_live_feed` (76637cc), `t_phase5_champion_explanations` (b806e9f + f1d1658 + f46a548)
 - Phase 5.5 (planned): Research & Learning Dashboard — 1 planning card in Backlog
-- Phase 5.6 (in progress): Historical Data Warehouse — planning card `t_90ca9e6f` Done. 1 implementation card in Review (`t_1c8a70da` — MarketDataProvider interface); 11 remaining implementation cards Ready. Non-blocking for v1.0. Storage architecture: DuckDB + Parquet + SQLite (hybrid). Design doc: `docs/architecture/phase-5-6-historical-warehouse.md`.
+- Phase 5.6 (in progress): Historical Data Warehouse — planning card `t_90ca9e6f` Done. 1 implementation card Done (`t_1c8a70da` — MarketDataProvider interface, commit `808ec02`); 11 remaining implementation cards Ready (2 unblocked by #1: `t_b2a75ee8` local_warehouse and `t_22210825` provider_plugins). Non-blocking for v1.0. Storage architecture: DuckDB + Parquet + SQLite (hybrid). Design doc: `docs/architecture/phase-5-6-historical-warehouse.md`.

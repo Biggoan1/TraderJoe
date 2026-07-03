@@ -8,8 +8,10 @@ Trader Joe release history.
 
 **Date:** 2026-07-03
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase56_provider_interface` (`t_1c8a70da`)
+**Commit:** `808ec02`
+**Validation commit:** pending (this update)
 
 ### Added
 - `strategy/market_data_provider.py` — provider-agnostic market

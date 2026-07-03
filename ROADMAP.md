@@ -1562,7 +1562,7 @@ convention.
 Twelve implementation cards, each independently testable,
 reversible, read-only:
 
-- `t_phase56_provider_interface` — Protocol + dataclasses + tests. **In Review** (`t_1c8a70da`; `strategy/market_data_provider.py`; +65 tests; commit pending).
+- `t_phase56_provider_interface` — Protocol + dataclasses + tests. **Done** (`t_1c8a70da`; `strategy/market_data_provider.py`; +65 tests; commit `808ec02`).
 - `t_phase56_local_warehouse` — directory layout, immutability
   enforcement, `WarehouseIntegrityError`.
 - `t_phase56_catalog` — extension of `strategy/data_catalog.py`.
