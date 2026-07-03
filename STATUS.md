@@ -6,15 +6,15 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 4 Statistical Decision-Support Layer (`t_phase4_stats_engine`, Review)
-- Last completed: Phase 4 Learning System Technical Design (`t_phase4_plan`)
+- Current: Phase 4 Historical Pattern Discovery (`t_phase4_pattern_discovery`, Ready)
+- Last completed: Phase 4 Statistical Decision-Support Layer (`t_phase4_stats_engine`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Stats engine implementation)
+- Commit: latest HEAD (Stats engine validation)
 - Tags: v0.4.0 (Phase 1 baseline), v0.10.0-phase2 (Phase 2), v0.17.0-phase3 (Phase 3)
-- Status: Stats engine implemented; awaiting Hermes validation
+- Status: Stats engine validated; Historical Pattern Discovery ready
 
 ## Testing
 - Tests passing: 715
@@ -41,4 +41,4 @@
 - Phase 1: complete
 - Phase 2: complete (6/6 complete)
 - Phase 3: complete (7/7 complete)
-- Phase 4: 1 planning card Done, 1 implementation card in Review, 5 in Backlog
+- Phase 4: 1 planning + 1 implementation card Done; 1 Ready; 4 in Backlog

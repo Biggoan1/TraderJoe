@@ -675,7 +675,7 @@ config.
   Kanban breakdown; KANBAN.md reflects the six implementation cards.
 
 #### `t_phase4_stats_engine` — Statistical Decision-Support Layer
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Add read-only descriptive statistics, confidence
   intervals, effect-size estimates, and sample-size checks over the
   trades log and Phase 3 comparison outputs. Produce
@@ -705,9 +705,17 @@ config.
   Never imports `strategy.config`, never reads or mutates the
   `FeatureFlags` singleton, and never references any order-path
   module.
+- **Validation outcome:** 715 tests passing; math verified against
+  known-input fixtures (mean CI, Wilson CI, Cohen's d); determinism
+  verified (repeat analysis byte-identical, `findings_stable_hash`
+  order-independent); sample-size floor enforced (below-floor →
+  `hypothesis`, at/above → `validated`); no `alpaca` / `yfinance` /
+  `TradingClient` / `api_key` / order-path references; module never
+  imports `strategy.config` and never mutates global feature flags;
+  commit `7005254`.
 
 #### `t_phase4_pattern_discovery` — Historical Pattern Discovery
-- **Status:** Backlog (depends on Phase 2 intelligence modules only)
+- **Status:** Ready
 - **Scope:** Identify co-occurring conditions across regime, sector
   leadership, market breadth, and relative strength history that
   correlate with trade outcomes. Emit `PatternHypothesis` records —

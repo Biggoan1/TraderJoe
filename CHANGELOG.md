@@ -8,8 +8,32 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase4_stats_engine`
+**Commit:** `7005254`, plus validation board update
+
+### Validation
+- 715 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- Math verified against known-input fixtures: `normal_mean_ci` for
+  values `[1..5]` (mean 3.0, CI [1.6141, 4.3859] at 95%);
+  `wilson_proportion_ci` correctly handles all-failure and all-success
+  boundaries; `cohens_d_one_sample` on the same fixture returns
+  1.8974 as expected
+- Determinism verified: repeat `analyze_comparison` produces
+  byte-identical `to_dict` output; `findings_stable_hash` is
+  order-independent
+- Sample-size floor enforced: below-floor findings labeled
+  `hypothesis`; at/above-floor findings labeled `validated`
+- No `alpaca`, `yfinance`, `TradingClient`, `api_key`, `place_order`,
+  `submit_order`, or order-path references in
+  `strategy/stats_engine.py`
+- Module never imports `strategy.config`, never reads or mutates
+  `FeatureFlags`
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase4_stats_engine` moved to Done
+- Card `t_phase4_pattern_discovery` unblocked and moved to Ready
 
 ### Added
 - `strategy/stats_engine.py` — read-only descriptive-statistics layer
