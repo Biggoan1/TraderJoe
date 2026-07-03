@@ -648,7 +648,8 @@ begins.
 5. **No broker / order-path integration.** No `alpaca`,
    `TradingClient`, `place_order`, `submit_order`, `yfinance`,
    `api_key`, or credential references. Historical validation paper
-   account remains documentation-only (see [[reference-validation-alpaca-account]]).
+   account remains documentation-only (see the "Validation Paper
+   Account" subsection under Phase 3 Data Requirements).
 6. **Human approval required.** Recommendations may advance
    promotion state only via `PromotionEntry.evidence` plus a
    human-authored `ApprovalRecord`. The Learning System never
