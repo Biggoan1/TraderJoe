@@ -22,12 +22,15 @@ from strategy.comparison_harness import (
 )
 from strategy.config import FeatureFlags, reset_feature_flags
 from strategy.rs_challenger import (
+    DEFAULT_RS_FULLSCALE_PP,
+    DEFAULT_RS_LOOKBACK_DAYS,
     DEFAULT_RS_NEUTRAL_SCORE,
     DEFAULT_RS_OVERLAY_WEIGHT,
     DEFAULT_RS_SCORE_RANGE,
     RS_CHALLENGER_FLAG_NAME,
     RS_CHALLENGER_STRATEGY_ID,
     RelativeStrengthChallenger,
+    build_rs_map_from_bars,
     rs_provider_from_map,
 )
 
@@ -759,3 +762,337 @@ class TestObservationalOnly:
 
         assert flags.all_disabled is True
         assert flags.enabled_flags == []
+
+
+# ---------------------------------------------------------------------------
+# build_rs_map_from_bars — deterministic map builder for live-fetch / replay
+# ---------------------------------------------------------------------------
+
+
+def _bars(prefix_close: float, steps: List[float]) -> List[Dict[str, object]]:
+    """Build ``[{"t": "day_i", "c": price}, ...]`` from a start price and a
+    sequence of per-step price deltas expressed as multiplicative factors.
+    Timestamps are lexicographically sortable ISO-like day tags.
+    """
+    prices: List[float] = [float(prefix_close)]
+    for factor in steps:
+        prices.append(prices[-1] * factor)
+    return [
+        {"t": f"2026-05-{i + 1:02d}", "c": price}
+        for i, price in enumerate(prices)
+    ]
+
+
+def _flat_bars(price: float, days: int) -> List[Dict[str, object]]:
+    return [
+        {"t": f"2026-05-{i + 1:02d}", "c": float(price)} for i in range(days)
+    ]
+
+
+class TestBuildRsMapFromBars:
+    def test_empty_input_returns_empty_map(self):
+        assert build_rs_map_from_bars({}, ["AAPL"], ["SPY"]) == {}
+
+    def test_populates_only_timestamps_past_lookback(self):
+        # 6 bars; lookback=2 -> only indices 2, 3, 4, 5 are eligible
+        bars = {
+            "AAPL": _flat_bars(100.0, 6),
+            "SPY": _flat_bars(400.0, 6),
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=2
+        )
+        assert set(rs_map.keys()) == {
+            "2026-05-03",
+            "2026-05-04",
+            "2026-05-05",
+            "2026-05-06",
+        }
+
+    def test_returns_neutral_when_symbol_matches_benchmark(self):
+        # Identical percentage moves -> 0 pp outperformance -> neutral
+        bars = {
+            "AAPL": _bars(100.0, [1.01, 1.01, 1.01]),
+            "SPY": _bars(400.0, [1.01, 1.01, 1.01]),
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=2
+        )
+        # Windows sit at timestamps day 3 (index 2) and day 4 (index 3)
+        for t, per_symbol in rs_map.items():
+            assert abs(per_symbol["AAPL"] - DEFAULT_RS_NEUTRAL_SCORE) < 0.01
+
+    def test_positive_rs_when_symbol_outperforms(self):
+        # AAPL doubles (roughly), SPY stays flat over the window -> huge outperformance
+        bars = {
+            "AAPL": [
+                {"t": "2026-05-01", "c": 100.0},
+                {"t": "2026-05-02", "c": 105.0},
+                {"t": "2026-05-03", "c": 110.0},
+            ],
+            "SPY": [
+                {"t": "2026-05-01", "c": 400.0},
+                {"t": "2026-05-02", "c": 402.0},
+                {"t": "2026-05-03", "c": 404.0},
+            ],
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=2
+        )
+        assert "2026-05-03" in rs_map
+        rs_value = rs_map["2026-05-03"]["AAPL"]
+        # +10% AAPL vs +1% SPY = +9 pp; 9/10 * 50 = 45 -> neutral+45 = 95
+        assert abs(rs_value - 95.0) < 0.01
+        assert rs_value > DEFAULT_RS_NEUTRAL_SCORE
+
+    def test_negative_rs_when_symbol_underperforms(self):
+        bars = {
+            "AAPL": [
+                {"t": "2026-05-01", "c": 100.0},
+                {"t": "2026-05-02", "c": 99.0},
+                {"t": "2026-05-03", "c": 98.0},
+            ],
+            "SPY": [
+                {"t": "2026-05-01", "c": 400.0},
+                {"t": "2026-05-02", "c": 402.0},
+                {"t": "2026-05-03", "c": 404.0},
+            ],
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=2
+        )
+        rs_value = rs_map["2026-05-03"]["AAPL"]
+        # -2% AAPL vs +1% SPY = -3 pp; -3/10 * 50 = -15 -> 50-15 = 35
+        assert abs(rs_value - 35.0) < 0.01
+        assert rs_value < DEFAULT_RS_NEUTRAL_SCORE
+
+    def test_averages_across_benchmarks(self):
+        # AAPL: +5% vs SPY +0%, vs QQQ +2%
+        # avg outperformance = ((+5) + (+3)) / 2 = +4 pp
+        # 4/10 * 50 = 20 -> neutral+20 = 70
+        bars = {
+            "AAPL": [
+                {"t": "2026-05-01", "c": 100.0},
+                {"t": "2026-05-02", "c": 102.5},
+                {"t": "2026-05-03", "c": 105.0},
+            ],
+            "SPY": [
+                {"t": "2026-05-01", "c": 400.0},
+                {"t": "2026-05-02", "c": 400.0},
+                {"t": "2026-05-03", "c": 400.0},
+            ],
+            "QQQ": [
+                {"t": "2026-05-01", "c": 300.0},
+                {"t": "2026-05-02", "c": 303.0},
+                {"t": "2026-05-03", "c": 306.0},
+            ],
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY", "QQQ"], lookback_days=2
+        )
+        rs_value = rs_map["2026-05-03"]["AAPL"]
+        assert abs(rs_value - 70.0) < 0.01
+
+    def test_clips_extreme_outperformance_to_upper_window(self):
+        # 50% single-window return vs flat benchmark -> +50 pp;
+        # 50/10 * 50 = 250 -> clamped to neutral + range = 100.0
+        bars = {
+            "AAPL": [
+                {"t": "2026-05-01", "c": 100.0},
+                {"t": "2026-05-02", "c": 125.0},
+                {"t": "2026-05-03", "c": 150.0},
+            ],
+            "SPY": [
+                {"t": "2026-05-01", "c": 400.0},
+                {"t": "2026-05-02", "c": 400.0},
+                {"t": "2026-05-03", "c": 400.0},
+            ],
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=2
+        )
+        assert rs_map["2026-05-03"]["AAPL"] == 100.0
+
+    def test_clips_extreme_underperformance_to_lower_window(self):
+        bars = {
+            "AAPL": [
+                {"t": "2026-05-01", "c": 100.0},
+                {"t": "2026-05-02", "c": 75.0},
+                {"t": "2026-05-03", "c": 50.0},
+            ],
+            "SPY": [
+                {"t": "2026-05-01", "c": 400.0},
+                {"t": "2026-05-02", "c": 400.0},
+                {"t": "2026-05-03", "c": 400.0},
+            ],
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=2
+        )
+        assert rs_map["2026-05-03"]["AAPL"] == 0.0
+
+    def test_symbol_without_bars_is_omitted(self):
+        bars = {
+            "AAPL": _flat_bars(100.0, 5),
+            "SPY": _flat_bars(400.0, 5),
+        }
+        # MSFT has no bars — must not appear in the map
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL", "MSFT"], ["SPY"], lookback_days=2
+        )
+        for per_symbol in rs_map.values():
+            assert "MSFT" not in per_symbol
+            assert "AAPL" in per_symbol
+
+    def test_symbol_with_short_history_is_omitted(self):
+        # AAPL has only 2 bars total (< lookback + 1); MSFT has 5
+        bars = {
+            "AAPL": _flat_bars(100.0, 2),
+            "MSFT": _flat_bars(200.0, 5),
+            "SPY": _flat_bars(400.0, 5),
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL", "MSFT"], ["SPY"], lookback_days=3
+        )
+        # Only MSFT rows should be present (AAPL never accumulates enough closes)
+        for per_symbol in rs_map.values():
+            assert "AAPL" not in per_symbol
+
+    def test_missing_all_benchmarks_omits_symbol(self):
+        bars = {"AAPL": _flat_bars(100.0, 5)}
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY", "QQQ"], lookback_days=2
+        )
+        # Nothing to compare against -> nothing to emit
+        assert rs_map == {}
+
+    def test_missing_one_benchmark_still_emits(self):
+        # SPY absent; QQQ present -> falls back to QQQ-only average
+        bars = {
+            "AAPL": [
+                {"t": "2026-05-01", "c": 100.0},
+                {"t": "2026-05-02", "c": 105.0},
+                {"t": "2026-05-03", "c": 110.0},
+            ],
+            "QQQ": [
+                {"t": "2026-05-01", "c": 300.0},
+                {"t": "2026-05-02", "c": 300.0},
+                {"t": "2026-05-03", "c": 300.0},
+            ],
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY", "QQQ"], lookback_days=2
+        )
+        rs_value = rs_map["2026-05-03"]["AAPL"]
+        # AAPL +10% vs QQQ 0% = +10 pp; 10/10 * 50 = 50 -> neutral + 50 = 100
+        assert abs(rs_value - 100.0) < 0.01
+
+    def test_timestamp_keys_are_strings(self):
+        bars = {
+            "AAPL": _flat_bars(100.0, 4),
+            "SPY": _flat_bars(400.0, 4),
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=2
+        )
+        for key in rs_map:
+            assert isinstance(key, str)
+
+    def test_output_shape_feeds_rs_provider_from_map(self):
+        # Round-trip: build map, feed it into the provider factory,
+        # check the provider returns floats when the (ts, symbol) is present.
+        bars = {
+            "AAPL": [
+                {"t": "2026-05-01", "c": 100.0},
+                {"t": "2026-05-02", "c": 105.0},
+                {"t": "2026-05-03", "c": 110.0},
+            ],
+            "SPY": [
+                {"t": "2026-05-01", "c": 400.0},
+                {"t": "2026-05-02", "c": 402.0},
+                {"t": "2026-05-03", "c": 404.0},
+            ],
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=2
+        )
+        provider = rs_provider_from_map(rs_map)
+        event = BacktestEvent(
+            timestamp="2026-05-03",
+            event_type="market_snapshot",
+            sequence=1,
+        )
+        value = provider("AAPL", event)
+        assert isinstance(value, float)
+        # Same as computed earlier: 95.0
+        assert abs(value - 95.0) < 0.01
+
+    def test_provider_returns_none_when_timestamp_missing(self):
+        # Timestamps before lookback don't appear -> provider returns None
+        bars = {
+            "AAPL": _flat_bars(100.0, 5),
+            "SPY": _flat_bars(400.0, 5),
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=3
+        )
+        provider = rs_provider_from_map(rs_map)
+        early_event = BacktestEvent(
+            timestamp="2026-05-01",
+            event_type="market_snapshot",
+            sequence=1,
+        )
+        assert provider("AAPL", early_event) is None
+
+    def test_challenger_fallback_still_fires_on_empty_rs_map(self):
+        # If bars are shorter than lookback for every symbol, the map
+        # is empty and the challenger falls back to the base score on
+        # every event — matches the pre-live-feed behaviour.
+        bars = {
+            "AAPL": _flat_bars(100.0, 2),
+            "SPY": _flat_bars(400.0, 2),
+        }
+        rs_map = build_rs_map_from_bars(
+            bars, ["AAPL"], ["SPY"], lookback_days=5
+        )
+        assert rs_map == {}
+
+        ts = "2026-05-02"
+        base = ScriptedBase(
+            "champion-v0.4.0",
+            {ts: _base_evaluation("champion-v0.4.0", ts, {"AAPL": 0.5}, ["AAPL"])},
+        )
+        challenger = RelativeStrengthChallenger(
+            base,
+            rs_provider_from_map(rs_map),
+            flags=FeatureFlags(enable_relative_strength=True),
+        )
+        result = challenger.evaluate(_event(ts))
+        # Score unchanged from base -> fallback path took over
+        assert result.scores["AAPL"] == 0.5
+        assert any("rs data missing" in w for w in result.warnings)
+
+    def test_rejects_non_positive_lookback(self):
+        with pytest.raises(ValueError, match="lookback"):
+            build_rs_map_from_bars(
+                {"AAPL": _flat_bars(100.0, 5)}, ["AAPL"], ["SPY"],
+                lookback_days=0,
+            )
+
+    def test_rejects_non_positive_score_range(self):
+        with pytest.raises(ValueError, match="score_range"):
+            build_rs_map_from_bars(
+                {"AAPL": _flat_bars(100.0, 5)}, ["AAPL"], ["SPY"],
+                score_range=0.0,
+            )
+
+    def test_rejects_non_positive_fullscale_pp(self):
+        with pytest.raises(ValueError, match="fullscale_pp"):
+            build_rs_map_from_bars(
+                {"AAPL": _flat_bars(100.0, 5)}, ["AAPL"], ["SPY"],
+                fullscale_pp=0.0,
+            )
+
+    def test_module_exposes_default_constants(self):
+        assert DEFAULT_RS_LOOKBACK_DAYS > 0
+        assert DEFAULT_RS_FULLSCALE_PP > 0

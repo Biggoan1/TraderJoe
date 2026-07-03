@@ -72,8 +72,10 @@ from strategy.research_reports import (
     render_walk_forward_report,
 )
 from strategy.rs_challenger import (
+    DEFAULT_RS_LOOKBACK_DAYS,
     RS_CHALLENGER_STRATEGY_ID,
     RelativeStrengthChallenger,
+    build_rs_map_from_bars,
     rs_provider_from_map,
 )
 from strategy.stats_engine import (
@@ -459,14 +461,23 @@ def _write_analyst_reports(
 def _fetch_live_events(
     config: HistoricalValidationConfig,
     research_client: Any,
-) -> Tuple[List[BacktestEvent], Dict[str, Dict[str, float]]]:
+) -> Tuple[
+    List[BacktestEvent],
+    Dict[str, Dict[str, float]],
+    Dict[str, Dict[str, float]],
+]:
     """Live-fetch pathway.
 
     Calls the Research Account Client for historical bars, converts
-    them into deterministic events and a Champion score map.  The
-    scoring function is intentionally simple (percent change vs the
-    window mean) — a follow-up card can plug in the real Champion
-    scoring logic once it is extracted from ``trader.py``.
+    them into deterministic events, a Champion score map, and an
+    RS map keyed ``{timestamp: {symbol: rs_value}}`` for the RS
+    Challenger.  The scoring function is intentionally simple
+    (percent change vs the window mean) — a follow-up card can plug
+    in the real Champion scoring logic once it is extracted from
+    ``trader.py``.  The RS map uses
+    :func:`strategy.rs_challenger.build_rs_map_from_bars`, which
+    reads the same bars deterministically without any external
+    dependencies.
     """
     result = research_client.fetch_bars(
         symbols=list(config.symbols) + list(config.benchmarks),
@@ -506,6 +517,14 @@ def _fetch_live_events(
                 (close - mean) / mean if mean else 0.0
             )
 
+    rs_lookback = min(DEFAULT_RS_LOOKBACK_DAYS, max(1, len(timestamps) - 1))
+    rs_map = build_rs_map_from_bars(
+        bars_by_symbol=bars_by_symbol,
+        symbols=config.symbols,
+        benchmarks=config.benchmarks,
+        lookback_days=rs_lookback,
+    )
+
     events = [
         BacktestEvent(
             timestamp=timestamp,
@@ -514,7 +533,7 @@ def _fetch_live_events(
         )
         for index, timestamp in enumerate(timestamps)
     ]
-    return events, scores_by_timestamp
+    return events, scores_by_timestamp, rs_map
 
 
 # ---------------------------------------------------------------------------
@@ -553,8 +572,9 @@ def run_historical_validation(
     warnings: List[str] = []
 
     if config.live_fetch:
-        events, champion_scores = _fetch_live_events(config, research_client)
-        rs_map: Dict[str, Dict[str, float]] = {}
+        events, champion_scores, rs_map = _fetch_live_events(
+            config, research_client
+        )
         live_fetch_used = True
         # Persist a fixture-style events snapshot so downstream reruns
         # can reproduce the run without hitting the live API.
@@ -576,7 +596,7 @@ def run_historical_validation(
             live_fetch=False,
             fixture_events=tuple(events),
             fixture_champion_scores=champion_scores,
-            fixture_rs_map={},
+            fixture_rs_map=rs_map,
         )
         dataset_manifest_path = _write_dataset_manifest(fixture_config)
     else:

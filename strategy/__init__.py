@@ -86,11 +86,18 @@ from strategy.comparison_harness import (
     ScoreRow,
     ScoreTable,
 )
+from strategy.relative_strength import relative_return_pct
 from strategy.rs_challenger import (
+    DEFAULT_RS_FULLSCALE_PP,
+    DEFAULT_RS_LOOKBACK_DAYS,
+    DEFAULT_RS_NEUTRAL_SCORE,
+    DEFAULT_RS_OVERLAY_WEIGHT,
+    DEFAULT_RS_SCORE_RANGE,
     RS_CHALLENGER_FLAG_NAME,
     RS_CHALLENGER_STRATEGY_ID,
     RelativeStrengthChallenger,
     RelativeStrengthProvider,
+    build_rs_map_from_bars,
     rs_provider_from_map,
 )
 from strategy.walk_forward import (
@@ -308,10 +315,17 @@ __all__ = [
     "KNOWN_DISAGREEMENT_KINDS",
     "ScoreRow",
     "ScoreTable",
+    "DEFAULT_RS_FULLSCALE_PP",
+    "DEFAULT_RS_LOOKBACK_DAYS",
+    "DEFAULT_RS_NEUTRAL_SCORE",
+    "DEFAULT_RS_OVERLAY_WEIGHT",
+    "DEFAULT_RS_SCORE_RANGE",
     "RS_CHALLENGER_FLAG_NAME",
     "RS_CHALLENGER_STRATEGY_ID",
     "RelativeStrengthChallenger",
     "RelativeStrengthProvider",
+    "build_rs_map_from_bars",
+    "relative_return_pct",
     "rs_provider_from_map",
     "WalkForwardPipeline",
     "WalkForwardReport",

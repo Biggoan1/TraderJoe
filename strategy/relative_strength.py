@@ -30,11 +30,51 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import yfinance as yf
 
 import pandas as pd
+
+
+def relative_return_pct(
+    sym_closes: Sequence[float],
+    bench_closes: Sequence[float],
+    lookback_days: int,
+) -> Optional[float]:
+    """Pure-Python rolling relative return.
+
+    Accepts two index-aligned close-price sequences and returns the
+    percentage-point outperformance of the symbol vs the benchmark
+    over ``lookback_days`` bars — ``sym_return_pct - bench_return_pct``
+    where each ``return_pct`` is measured from the ``t - lookback``
+    close to the final close of the sequence.
+
+    Returns ``None`` if ``lookback_days`` is non-positive, if either
+    sequence has fewer than ``lookback_days + 1`` entries, or if
+    either start price is zero.
+
+    ``RelativeStrengthCalculator._relative_return`` delegates to this
+    helper after aligning DataFrames.  Extracting the primitive lets
+    research/replay code compute RS from bar-lists without pulling in
+    pandas or yfinance.
+    """
+    if lookback_days <= 0:
+        return None
+    if (
+        len(sym_closes) < lookback_days + 1
+        or len(bench_closes) < lookback_days + 1
+    ):
+        return None
+    sym_start = float(sym_closes[-(lookback_days + 1)])
+    sym_end = float(sym_closes[-1])
+    bench_start = float(bench_closes[-(lookback_days + 1)])
+    bench_end = float(bench_closes[-1])
+    if sym_start == 0 or bench_start == 0:
+        return None
+    sym_return = ((sym_end - sym_start) / sym_start) * 100
+    bench_return = ((bench_end - bench_start) / bench_start) * 100
+    return round(sym_return - bench_return, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -265,30 +305,16 @@ class RelativeStrengthCalculator:
         Returns percentage points of outperformance (positive = outperformed).
         E.g., if symbol returned 5% and benchmark returned 3%, returns 2.0.
         """
-        # Align indices
-        aligned = sym_df.join(bench_df, how="inner", lsuffix="_sym", rsuffix="_bench")
-        if aligned.empty or len(aligned) < lookback_days:
+        aligned = sym_df.join(
+            bench_df, how="inner", lsuffix="_sym", rsuffix="_bench"
+        )
+        if aligned.empty:
             return None
-
-        close_sym = aligned["Close_sym"]
-        close_bench = aligned["Close_bench"]
-
-        # Need at least lookback_days + 1 rows (start + end)
-        if len(close_sym) < lookback_days + 1:
-            return None
-
-        sym_start = close_sym.iloc[-(lookback_days + 1)]
-        sym_end = close_sym.iloc[-1]
-        bench_start = close_bench.iloc[-(lookback_days + 1)]
-        bench_end = close_bench.iloc[-1]
-
-        if sym_start == 0 or bench_start == 0:
-            return None
-
-        sym_return = ((sym_end - sym_start) / sym_start) * 100
-        bench_return = ((bench_end - bench_start) / bench_start) * 100
-
-        return round(sym_return - bench_return, 2)
+        return relative_return_pct(
+            aligned["Close_sym"].tolist(),
+            aligned["Close_bench"].tolist(),
+            lookback_days,
+        )
 
     def _calculate_percentiles(
         self, results: List[RelativeStrengthResult]

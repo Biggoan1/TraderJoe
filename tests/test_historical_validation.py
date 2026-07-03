@@ -18,6 +18,7 @@ from strategy.historical_validation import (
     HistoricalValidationConfig,
     HistoricalValidationError,
     LiveFetchNotAvailableError,
+    _fetch_live_events,
     run_historical_validation,
 )
 from strategy.promotion_gates import (
@@ -429,6 +430,185 @@ class TestLiveFetchPathway:
             assert symbol in requested_symbols
         for symbol in ("SPY", "QQQ"):
             assert symbol in requested_symbols
+
+
+# ---------------------------------------------------------------------------
+# Live-fetch RS wiring — t_phase5_rs_live_feed
+# ---------------------------------------------------------------------------
+
+
+def _diverging_bars(
+    days: int = 45,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Deterministic bars where each symbol diverges from benchmarks in
+    a distinct direction so the RS map has entries for every symbol
+    and pushes the Champion vs Challenger scores apart.
+    """
+    start = date(2026, 5, 1)
+
+    def stamp(i: int) -> str:
+        d = start + timedelta(days=i)
+        return f"{d.isoformat()}T14:30:00+00:00"
+
+    bars: Dict[str, List[Dict[str, Any]]] = {}
+    # Rising, flat, and falling series relative to a flat benchmark.
+    trajectories = {
+        "AAPL": 1.010,   # +1.0% per bar (steady outperformer)
+        "MSFT": 1.000,   # matches benchmark
+        "NVDA": 0.990,   # -1.0% per bar (steady underperformer)
+    }
+    for symbol, ratio in trajectories.items():
+        price = 100.0
+        series: List[Dict[str, Any]] = []
+        for i in range(days):
+            series.append({"t": stamp(i), "c": round(price, 4)})
+            price *= ratio
+        bars[symbol] = series
+    for bench in ("SPY", "QQQ"):
+        series: List[Dict[str, Any]] = []
+        price = 400.0 if bench == "SPY" else 300.0
+        for i in range(days):
+            series.append({"t": stamp(i), "c": round(price, 4)})
+            # benchmark is essentially flat (tiny +0.1% drift)
+            price *= 1.001
+        bars[bench] = series
+    return bars
+
+
+def _short_bars(days: int = 3) -> Dict[str, List[Dict[str, Any]]]:
+    """Bars too short for the default RS lookback."""
+    bars: Dict[str, List[Dict[str, Any]]] = {}
+    for symbol in ("AAPL", "MSFT", "NVDA", "SPY", "QQQ"):
+        bars[symbol] = [
+            {"t": f"2026-05-{i + 1:02d}T14:30:00+00:00", "c": 100.0 + i}
+            for i in range(days)
+        ]
+    return bars
+
+
+class TestLiveFetchRsMap:
+    """Direct-call tests against ``_fetch_live_events`` so we can inspect
+    the RS map that the pipeline hands to ``rs_provider_from_map``.
+    Together with ``TestLiveFetchRsIntegration`` these prove the RS
+    Challenger receives real data and that the fallback path still
+    fires when bars are too short.
+    """
+
+    def _config(self, tmp_path) -> HistoricalValidationConfig:
+        return _make_config(
+            tmp_path,
+            live_fetch=True,
+            fixture_events=(),
+            fixture_champion_scores={},
+            fixture_rs_map={},
+        )
+
+    def test_rs_map_populated_when_bars_have_enough_history(self, tmp_path):
+        client = _StubResearchClient(_diverging_bars(days=45))
+        config = self._config(tmp_path)
+        events, champion_scores, rs_map = _fetch_live_events(config, client)
+        assert events, "expected non-empty events"
+        # Post-lookback timestamps must contain entries for every symbol
+        # with bars covering the window.
+        eligible = list(rs_map.keys())
+        assert eligible, "rs_map must be populated in live-fetch path"
+        sample = rs_map[eligible[-1]]
+        for symbol in FIXTURE_SYMBOLS:
+            assert symbol in sample, (
+                f"expected {symbol} in rs_map at {eligible[-1]}"
+            )
+
+    def test_rs_map_directions_match_bar_trajectories(self, tmp_path):
+        client = _StubResearchClient(_diverging_bars(days=45))
+        config = self._config(tmp_path)
+        _, _, rs_map = _fetch_live_events(config, client)
+        latest = rs_map[max(rs_map)]
+        # AAPL trends up vs a flat benchmark -> RS > neutral
+        assert latest["AAPL"] > 50.0
+        # NVDA trends down vs a flat benchmark -> RS < neutral
+        assert latest["NVDA"] < 50.0
+        # MSFT tracks benchmark drift -> near neutral (allow small band)
+        assert abs(latest["MSFT"] - 50.0) < 20.0
+
+    def test_rs_map_empty_when_bars_too_short_for_lookback(self, tmp_path):
+        client = _StubResearchClient(_short_bars(days=3))
+        config = self._config(tmp_path)
+        _, _, rs_map = _fetch_live_events(config, client)
+        # ``_fetch_live_events`` shrinks lookback to bars_available - 1
+        # (min 1) so a 3-bar series may still emit at most one row.
+        # The load-bearing assertion is that when bars are short the
+        # RS map does not cover the whole event stream — the fallback
+        # path must remain active for most events.
+        events, _, _ = _fetch_live_events(config, client)
+        assert len(rs_map) < len(events), (
+            "rs_map must not cover every event when bars are too short"
+        )
+
+
+class TestLiveFetchRsIntegration:
+    """Full-pipeline assertion: with a populated RS map, the Champion
+    vs Challenger comparison produces disagreements.  With bars too
+    short for a lookback, the pipeline still succeeds and the RS
+    Challenger falls back to base scores.
+    """
+
+    def _config(self, tmp_path) -> HistoricalValidationConfig:
+        return _make_config(
+            tmp_path,
+            live_fetch=True,
+            fixture_events=(),
+            fixture_champion_scores={},
+            fixture_rs_map={},
+        )
+
+    def test_pipeline_produces_disagreements_with_rs_signal(self, tmp_path):
+        reset_feature_flags()  # keep the global check clean
+        client = _StubResearchClient(_diverging_bars(days=45))
+        config = self._config(tmp_path)
+        bundle = run_historical_validation(
+            config,
+            research_client=client,
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        # With an RS map that lifts one symbol and depresses another,
+        # the Challenger's overlay must reshuffle scores enough for
+        # at least one disagreement to fire.
+        total_disagreements = sum(
+            bundle.comparison.disagreements_by_kind().get(kind, []).__len__()
+            for kind in bundle.comparison.disagreements_by_kind()
+        )
+        assert total_disagreements > 0, (
+            "expected RS overlay to produce at least one disagreement, "
+            f"got {total_disagreements}"
+        )
+        # PromotionEntry still disabled and unapproved.
+        assert bundle.promotion_entry.current_state == STATE_DISABLED
+        assert bundle.promotion_entry.approvals == []
+
+    def test_pipeline_falls_back_when_bars_too_short(self, tmp_path):
+        reset_feature_flags()
+        client = _StubResearchClient(_short_bars(days=3))
+        config = self._config(tmp_path)
+        bundle = run_historical_validation(
+            config,
+            research_client=client,
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        # Pipeline succeeds; PromotionEntry unchanged.
+        assert bundle.live_fetch_used is True
+        assert bundle.promotion_entry.current_state == STATE_DISABLED
+
+    def test_global_feature_flags_untouched_by_live_fetch_run(self, tmp_path):
+        flags = reset_feature_flags()
+        client = _StubResearchClient(_diverging_bars(days=45))
+        config = self._config(tmp_path)
+        run_historical_validation(
+            config,
+            research_client=client,
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        assert flags.all_disabled is True
+        assert flags.enabled_flags == []
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,7 @@ from strategy.relative_strength import (
     format_rs_result,
     format_rs_summary,
     get_calculator,
+    relative_return_pct,
 )
 
 
@@ -799,3 +800,68 @@ class TestEdgeCases:
         spy_result = next(r for r in results if r.symbol == "SPY")
         # SPY vs SPY should be ~0
         assert abs(spy_result.rs_vs_benchmark.get("SPY", {}).get("5d", 999)) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# Pure-Python relative_return_pct primitive
+# ---------------------------------------------------------------------------
+
+
+class TestRelativeReturnPct:
+    """Bar-list-based primitive used by the historical validation
+    live-fetch pathway.  ``RelativeStrengthCalculator._relative_return``
+    delegates to this function after aligning DataFrames, so the
+    parity with the DataFrame test cases is load-bearing.
+    """
+
+    def test_outperforms_by_two_pp(self):
+        # sym: 100 -> 105 = +5%; bench: 100 -> 103 = +3%; diff = 2.0
+        sym = [100, 101, 102, 103, 104, 105]
+        bench = [100, 100.5, 101, 101.5, 102, 103]
+        assert abs(relative_return_pct(sym, bench, 5) - 2.0) < 0.01
+
+    def test_underperforms_by_three_pp(self):
+        # sym: 100 -> 98 = -2%; bench: 100 -> 101 = +1%; diff = -3.0
+        sym = [100, 99, 99, 98.5, 98.2, 98]
+        bench = [100, 100.2, 100.4, 100.6, 100.8, 101]
+        assert abs(relative_return_pct(sym, bench, 5) - (-3.0)) < 0.01
+
+    def test_returns_none_when_series_too_short(self):
+        assert relative_return_pct([100, 101], [100, 101], 20) is None
+
+    def test_returns_none_when_lookback_non_positive(self):
+        assert relative_return_pct([100, 101, 102], [100, 101, 102], 0) is None
+        assert relative_return_pct([100, 101, 102], [100, 101, 102], -1) is None
+
+    def test_returns_none_on_zero_start(self):
+        sym = [0, 1, 2, 3, 4, 5]
+        bench = [100, 101, 102, 103, 104, 105]
+        assert relative_return_pct(sym, bench, 5) is None
+
+    def test_returns_none_on_zero_benchmark_start(self):
+        sym = [100, 101, 102, 103, 104, 105]
+        bench = [0, 1, 2, 3, 4, 5]
+        assert relative_return_pct(sym, bench, 5) is None
+
+    def test_uses_last_lookback_plus_one_bars(self):
+        # Extra earlier bars must not affect the result — the window
+        # anchors on the last ``lookback + 1`` closes.  Here lookback=1
+        # picks [100, 105] for sym and [100, 103] for bench, ignoring
+        # the leading 999s.
+        sym = [999, 999, 999, 100, 105]
+        bench = [999, 999, 999, 100, 103]
+        # sym +5%, bench +3%, diff = 2.0
+        assert abs(relative_return_pct(sym, bench, 1) - 2.0) < 0.01
+
+    def test_matches_dataframe_wrapper_output(self):
+        # The DataFrame-based ``_relative_return`` must produce the
+        # same numeric result as the pure primitive on the same closes.
+        sym = [100, 101, 102, 103, 104, 105]
+        bench = [100, 100.5, 101, 101.5, 102, 103]
+        sym_df = _make_close_df(sym)
+        bench_df = _make_close_df(bench)
+        df_result = RelativeStrengthCalculator._relative_return(
+            sym_df, bench_df, 5
+        )
+        primitive_result = relative_return_pct(sym, bench, 5)
+        assert df_result == primitive_result
