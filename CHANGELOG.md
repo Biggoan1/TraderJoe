@@ -8,8 +8,35 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase4_weight_recommender`
+**Commit:** `a04d46d`, plus validation board update
+
+### Validation
+- 867 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- `MAX_ALLOWED_PROMOTION_STATE == STATE_PAPER_TRADING` enforced;
+  `candidate` / `approved` / `production` rejected at both
+  `recommend_weights` entry and `WeightRecommendation.__post_init__`
+- Recommendation math verified: 10 → 12.0 at +20% for a positive
+  validated feature score
+- `RecommendationEnvelope.apply_to_entry` returns a new
+  `PromotionEntry` and never mutates the input (original entry
+  evidence remains `{}` after routing)
+- **Config immutability proven:** `strategy/config.py` bytes are
+  byte-identical before and after a recommender run + envelope
+  routing
+- Determinism verified: repeat recommendations byte-identical;
+  `recommendations_stable_hash` order-independent
+- No `alpaca`, `yfinance`, `TradingClient`, `api_key`, `place_order`,
+  `submit_order`, or order-path references in
+  `strategy/weight_recommender.py`
+- Module never imports `strategy.config`, never reads or mutates
+  `FeatureFlags`
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase4_weight_recommender` moved to Done
+- Card `t_phase4_learning_reports` unblocked and moved to Ready
 
 ### Added
 - `strategy/weight_recommender.py` — read-only recommender that turns

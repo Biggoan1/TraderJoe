@@ -784,7 +784,7 @@ config.
   feature flags remain all disabled; commit `22259ad`.
 
 #### `t_phase4_weight_recommender` — Strategy Weight Recommender
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Suggest adjusted weights for Champion scoring components
   (e.g., `SELL_SCORE_FACTOR_WEIGHTS`) based on feature-importance
   output. Emit `WeightRecommendation` records that name the target
@@ -814,9 +814,17 @@ config.
   never imports `strategy.config`; unit tests read
   `strategy/config.py` bytes before and after a recommender run and
   assert byte-identical content.
+- **Validation outcome:** 867 tests passing; forbidden promotion
+  states (`candidate` / `approved` / `production`) rejected at both
+  entry points; recommendation math verified (10 → 12.0 at +20%);
+  `apply_to_entry` proven immutable (original entry evidence
+  unchanged after routing); `strategy/config.py` bytes verified
+  byte-identical before and after a recommender run; determinism +
+  order-independent hash verified; global feature flags remain all
+  disabled; commit `a04d46d`.
 
 #### `t_phase4_learning_reports` — Learning Report Generation
-- **Status:** Backlog (depends on all four analysis cards)
+- **Status:** Ready
 - **Scope:** Aggregate `StatisticalFinding`, `PatternHypothesis`,
   `FeatureImportanceScore`, and `WeightRecommendation` records into a
   `LearningReport` bundle. Mirror the Phase 3 `ResearchReport` layout
