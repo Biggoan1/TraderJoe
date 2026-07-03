@@ -172,6 +172,7 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Done |
 | `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Done |
 | `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Done |
+| `t_phase3_plan` | Phase 3: Decision Engine Rollout Plan | Phase 3 | Ready |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
 
@@ -181,7 +182,7 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 
 ## Phase 3 — Decision Engine
 
-**Status:** PLANNED
+**Status:** PLANNING
 
 **Objective:** Improve trading decisions using data from Phases 1 and 2.
 
@@ -195,6 +196,69 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 **Rules:** One feature at a time. Measure impact before enabling next. Champion remains production.
 
 **Exit Criteria:** Evidence of improved expectancy, drawdown, or alpha over Champion.
+
+### Planning Card: Decision Engine Rollout Plan
+- **Card:** `t_phase3_plan`
+- **Status:** Ready
+- **Scope:** Planning only — no strategy logic changes, no feature flags enabled.
+- **First candidate feature:** Relative Strength candidate-ranking overlay.
+- **Reasoning:** Relative Strength is the earliest Phase 2 intelligence signal, has isolated tests, and can be evaluated as a non-ordering challenger score before any trade-routing behavior changes.
+
+#### Required Evidence Before Enabling
+- At least four weeks of paper-trading records with Phase 2 observational fields captured.
+- Historical trade sample includes entry score, market regime, relative strength snapshot, sector leadership, and market breadth context where available.
+- Backtest and walk-forward results compare Champion against a challenger that applies the Relative Strength overlay.
+- Evidence must show improvement without concentrating risk in one symbol, sector, or regime.
+- Results must be reproducible from committed code and documented inputs.
+
+#### Success Metrics
+- Higher expectancy per trade than Champion after fees/slippage assumptions.
+- Equal or improved win rate without reducing average winner/loser ratio.
+- Lower or equal max drawdown versus Champion.
+- Higher profit factor versus Champion.
+- No material degradation in trade count or opportunity coverage.
+- Improvement persists across market regimes and is not driven by one outlier trade.
+
+#### Failure Metrics
+- Lower expectancy than Champion.
+- Higher max drawdown or materially worse downside tail.
+- Profit factor deterioration.
+- Excess concentration in one sector, symbol, or market regime.
+- Reduced sample size that makes the comparison statistically weak.
+- Performance improvement explained primarily by one outlier trade.
+
+#### Rollback Criteria
+- Disable the candidate feature flag immediately if live/paper challenger metrics breach failure thresholds.
+- Revert to pure Champion rankings if data capture or scoring fails closed/ambiguous.
+- Revert the focused implementation commit if the feature alters order-path behavior outside the approved gate.
+- Leave all Phase 2 observational collectors active unless they are the direct source of failure.
+
+#### Approval Gate
+- No behavior-changing feature flag may be enabled without explicit human approval.
+- Approval requires documented backtest, walk-forward, and Champion/Challenger comparison results.
+- Approval must name the exact flag, rollout duration, monitoring metrics, and rollback owner.
+- Champion remains the production trading path until the approval gate is satisfied.
+
+#### Backtest And Walk-Forward Requirements
+- Backtest the Relative Strength overlay against historical closed trades and available market context.
+- Use time-ordered walk-forward splits; do not tune on future data.
+- Include transaction cost/slippage assumptions consistent with paper-trading execution.
+- Report results by market regime, sector leadership bucket, and breadth regime where data exists.
+- Preserve raw comparison outputs under a reproducible report path before requesting approval.
+
+#### Champion/Challenger Comparison Plan
+- Champion: current production ranking and buy/sell behavior.
+- Challenger: Champion plus Relative Strength overlay in scoring/ranking only.
+- Compare on identical candidate universes and timestamps.
+- Record would-have-ranked positions, selected candidates, skipped candidates, and score deltas.
+- Keep the challenger observational until the approval gate explicitly allows behavior change.
+- Review weekly until sample size is sufficient for an enable/abandon decision.
+
+#### Recommended First Implementation Card
+- **Card:** `t_phase3_rs_overlay`
+- **Title:** Phase 3: Relative Strength Ranking Overlay
+- **Status:** Backlog
+- **Scope:** Implement a disabled-by-default challenger scoring overlay and comparison reports only.
 
 ---
 
