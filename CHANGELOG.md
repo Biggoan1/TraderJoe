@@ -4,6 +4,96 @@ Trader Joe release history.
 
 ---
 
+## v0.14.0 — Phase 3: Relative Strength Challenger Overlay
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase3_rs_challenger`
+
+### Added
+- `strategy/rs_challenger.py` — read-only, disabled-by-default RS
+  overlay for Champion/Challenger comparison
+- `RelativeStrengthChallenger` wraps any `ComparisonEvaluator` and
+  applies an additive score contribution
+  `weight * (rs - neutral) / range` when
+  `FeatureFlags.enable_relative_strength` is `True`
+- `RelativeStrengthProvider` protocol for caller-supplied RS lookups
+  keyed by symbol and event; providers return `None` when RS data is
+  unavailable
+- `rs_provider_from_map` builds a deterministic provider from a
+  `{timestamp: {symbol: rs}}` snapshot (defensively copied) suitable for
+  the Data Catalog and unit tests
+- `RS_CHALLENGER_STRATEGY_ID` / `RS_CHALLENGER_FLAG_NAME` /
+  `DEFAULT_RS_OVERLAY_WEIGHT` / `DEFAULT_RS_NEUTRAL_SCORE` /
+  `DEFAULT_RS_SCORE_RANGE` constants
+
+### Behavior
+- Disabled by default — global `FeatureFlags` singleton is never
+  mutated; enablement is done per-instance by passing a local
+  `FeatureFlags(enable_relative_strength=True)` to the constructor
+- When disabled the wrapper is Champion-parity: scores, rankings, and
+  explanations are byte-identical to the base evaluator (only
+  `strategy_id` differs); the harness records zero disagreements
+- When enabled: scores get an additive contribution, rankings are
+  recomputed by new score desc with symbol-asc tie-break, per-symbol
+  explanations note the base and RS contribution
+- RS values outside `[neutral - range, neutral + range]` are clamped
+- Missing RS values keep the base score and add a single aggregated
+  warning; provider exceptions are captured per-symbol as warnings
+- Symbols with a base score but no base ranking are rescored but stay
+  unranked
+
+### Tests
+- `tests/test_rs_challenger.py` — 32 tests covering:
+  - Constructor rejects negative weight, non-positive range, empty
+    `strategy_id`; defaults match module constants; conforms to
+    `ComparisonEvaluator` protocol
+  - `is_enabled` reflects the flag; global singleton stays disabled
+  - Champion parity when disabled: identical scores, rankings, and
+    explanations; harness records zero disagreements; result is a deep
+    copy of the base evaluation
+  - Symmetric contribution formula for both positive and negative RS
+    deltas
+  - Neutral RS produces zero contribution
+  - Out-of-range RS is clamped
+  - Custom weight scales contribution linearly
+  - Re-rank by new scores desc; symbol-asc tie-break
+  - Explanations include base note, RS score, and signed contribution
+  - Symbols in base scores but not base rankings stay unranked
+  - Harness surfaces `ranking_only` and `score_delta` disagreements
+    correctly when enabled
+  - Missing RS symbol keeps base score with an aggregated warning
+  - Empty snapshot marks every symbol
+  - Provider exception recorded as a warning; base score preserved
+  - Missing-RS symbol with preserved rank/score triggers no harness
+    disagreement; `data_unavailable` remains reserved for one-sided
+    symbols
+  - `rs_provider_from_map` returns values for known keys, `None` for
+    unknown timestamp/symbol, defensively copies its input
+  - Repeat runs produce identical evaluations; harness `stable_hash` is
+    independent of `generated_at`
+  - Source-level ban on `alpaca`, `place_order`, `submit_order`,
+    `TradingClient`, `api_key`, and `yfinance`
+  - Importing `strategy.rs_challenger` does not pull in `trader_cli`,
+    `trader`, `crypto_trader`, or `telegram_approvals`
+  - Global feature flags remain `all_disabled` after a run
+- 532 passing total (0 failures)
+
+### Notes
+- Overlay is behavior-neutral: production Champion path is unchanged;
+  the runner (`strategy/runner.py`), scheduler, Telegram approval flow,
+  CLI, and plugin behavior are untouched
+- No feature flags are enabled globally; local `FeatureFlags` instances
+  in tests do not mutate the singleton
+- RS data source is caller-supplied — no `yfinance` calls, no HTTP,
+  no broker credentials, no historical validation paper account wiring
+- Walk-forward pipeline (`t_phase3_walk_forward`), reports
+  (`t_phase3_reports`), and promotion gates (`t_phase3_promotion_gates`)
+  remain in Backlog
+
+---
+
 ## v0.13.0 — Phase 3: Champion/Challenger Comparison Harness
 
 **Date:** 2026-07-02

@@ -1,23 +1,23 @@
 # Trader Joe — Status
 
 ## Version
-- Current: v0.13.0
+- Current: v0.14.0
 - Champion: v0.4.0
-- Challenger: none
+- Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 3 Relative Strength Challenger Overlay (`t_phase3_rs_challenger`, Ready)
+- Current: Phase 3 Relative Strength Challenger Overlay (`t_phase3_rs_challenger`, Review)
 - Last completed: Phase 3 Champion/Challenger Comparison Harness (`t_phase3_champion_challenger`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Comparison harness validation)
+- Commit: latest HEAD (RS Challenger overlay implementation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Champion/Challenger comparison harness validated; Relative Strength Challenger Overlay ready
+- Status: RS Challenger overlay implemented; awaiting Hermes validation
 
 ## Testing
-- Tests passing: 500
+- Tests passing: 532
 - Tests failing: 0
 - Last run: 2026-07-02
 

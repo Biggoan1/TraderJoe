@@ -86,6 +86,13 @@ from strategy.comparison_harness import (
     ScoreRow,
     ScoreTable,
 )
+from strategy.rs_challenger import (
+    RS_CHALLENGER_FLAG_NAME,
+    RS_CHALLENGER_STRATEGY_ID,
+    RelativeStrengthChallenger,
+    RelativeStrengthProvider,
+    rs_provider_from_map,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -116,6 +123,11 @@ __all__ = [
     "KNOWN_DISAGREEMENT_KINDS",
     "ScoreRow",
     "ScoreTable",
+    "RS_CHALLENGER_FLAG_NAME",
+    "RS_CHALLENGER_STRATEGY_ID",
+    "RelativeStrengthChallenger",
+    "RelativeStrengthProvider",
+    "rs_provider_from_map",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",
