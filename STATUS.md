@@ -6,15 +6,15 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: none (Phase 3 complete)
-- Last completed: Phase 3 Feature Promotion Gates (`t_phase3_promotion_gates`)
+- Current: Phase 4 Statistical Decision-Support Layer (`t_phase4_stats_engine`, Ready)
+- Last completed: Phase 4 Learning System Technical Design (`t_phase4_plan`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Promotion gates validation)
-- Tag: v0.4.0 (Phase 1 baseline)
-- Status: Phase 3 complete — all seven Phase 3 cards Done
+- Commit: latest HEAD (Phase 4 planning)
+- Tags: v0.4.0 (Phase 1 baseline), v0.10.0-phase2 (Phase 2), v0.17.0-phase3 (Phase 3)
+- Status: Phase 3 complete; Phase 4 design complete; Statistical Decision-Support Layer ready to implement
 
 ## Testing
 - Tests passing: 656
@@ -37,7 +37,8 @@
 - TODOs: 12
 
 ## Phase
-- Current: 3 (Decision Engine research platform) — complete
+- Current: 4 (Learning System) — design complete, first implementation card ready
 - Phase 1: complete
 - Phase 2: complete (6/6 complete)
 - Phase 3: complete (7/7 complete)
+- Phase 4: design complete (1/7 planning cards Done; 6 implementation cards queued)

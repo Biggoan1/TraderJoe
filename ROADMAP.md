@@ -490,19 +490,297 @@ approved production rollout.
 
 ## Phase 4 — Learning System
 
-**Status:** PLANNED
+**Status:** DESIGN COMPLETE
 
-**Objective:** Continuous improvement through data analysis.
+**Objective:** Turn the Phase 3 research platform into a
+recommendations-only Learning System that surfaces measurable evidence
+for human review. Phase 4 must not enable feature flags, mutate
+production config, place orders, or advance promotion state
+automatically.
 
 - Statistical Decision Support
 - Historical Pattern Discovery
 - Performance breakdowns (by regime, strength, sector, score)
 - Feature Importance Analysis
 - Strategy Weight Recommendations
+- Learning-System Reports
 
 **Rules:** Recommendations only. Never modify production automatically.
+Every recommendation carries a confidence label, a sample-size figure,
+and a reproducibility hash.
 
-**Exit Criteria:** Every recommendation backed by measurable historical evidence.
+**Exit Criteria:** Every recommendation is backed by measurable
+historical evidence and can be replayed against a fixed Phase 3
+artifact set to produce byte-identical outputs.
+
+### Planning Card: Learning System Technical Design
+- **Card:** `t_phase4_plan`
+- **Status:** Done
+- **Scope:** Planning only — no learning code, no feature flags enabled, no
+  trading behavior changed.
+- **Design outcome:** Build a read-only Learning System that consumes
+  Phase 3 artifacts (`ChampionChallengerComparison`,
+  `WalkForwardReport`, `ResearchReport`, `PromotionReport`) plus the
+  existing `trades_history.db` and market-intelligence modules, and
+  produces machine-readable recommendation artifacts routed to
+  `PromotionEntry.evidence` for human review.
+- **First implementation card:** `t_phase4_stats_engine` — Statistical
+  Decision-Support Layer.
+
+### Learning System Architecture
+
+The Learning System is a read-only analysis subsystem. It ingests
+Phase 3 evidence and produces recommendation artifacts. It never
+executes trades, mutates paper-trading state, enables feature flags,
+or automatically advances promotion state.
+
+#### Components
+- **Statistical Decision Support:** Computes descriptive statistics,
+  confidence intervals, effect sizes, and sample-size checks over
+  paper-trading logs, Champion / Challenger comparisons, and
+  walk-forward reports. Distinguishes hypothesis-level findings from
+  validated findings.
+- **Historical Pattern Discovery:** Identifies co-occurring conditions
+  in market regime, sector leadership, market breadth, and relative
+  strength history that correlate with trade outcomes. Every pattern is
+  labeled as a hypothesis until validated on an out-of-sample window.
+- **Feature Importance Analysis:** Correlates score components,
+  disagreement kinds, and market-context features with realized
+  outcomes across the same event windows the harness evaluated.
+  Produces ranked feature-importance scores with methodology metadata.
+- **Strategy Weight Recommender:** Suggests adjusted weights for the
+  Champion's scoring components (e.g., `SELL_SCORE_FACTOR_WEIGHTS`)
+  based on feature-importance output. Recommendations are records —
+  the module never writes to `strategy/config.py`.
+- **Learning Reports:** Aggregates statistics, patterns, feature
+  importance, and weight recommendations into Markdown + JSON reports
+  that share the Phase 3 report layout (`report_id`, `manifest`,
+  `stable_hash`, `report.md` / `report.json` /
+  `disagreements.json` / `manifest.json`).
+- **Validation Harness:** End-to-end smoke test that runs the full
+  Learning System against a frozen Phase 3 artifact set and asserts
+  determinism, feature-flag isolation, and absence of any order-path
+  side effects.
+
+#### Interfaces
+- `EvidenceIntake`: pulls Phase 3 artifacts by report id or from a
+  supplied directory; never fetches remote data.
+- `StatisticalFinding`: dataclass with metric name, effect size,
+  confidence interval, sample size, methodology, and label
+  (`hypothesis` / `validated`).
+- `PatternHypothesis`: dataclass with pattern description,
+  co-occurring context, supporting evidence ids, sample size, and
+  confidence label.
+- `FeatureImportanceScore`: dataclass with feature name, importance
+  score, method, sample size, and evidence ids.
+- `WeightRecommendation`: dataclass with target config key, current
+  value, proposed value, rationale, feature-importance references, and
+  required promotion state before adoption.
+- `LearningReport`: dataclass mirroring `ResearchReport` — carries
+  Markdown, JSON payload, flattened recommendations list, and
+  reproducibility manifest; writes to `<output_dir>/<report_id>/`.
+- `RecommendationEnvelope`: routing struct that packages a
+  `WeightRecommendation` (or other recommendation) into
+  `PromotionEntry.evidence["weight_recommendation"]` (or a similar
+  namespaced key) so the promotion gate machinery can require it as
+  evidence for the next transition.
+
+#### Data Flow
+1. Operator supplies (or the report generator points at) a frozen
+   Phase 3 artifact directory plus a `trades_history.db` snapshot.
+2. `EvidenceIntake` loads
+   `ChampionChallengerComparison` + `WalkForwardReport` + relevant
+   `ResearchReport` bundles + trade logs.
+3. Statistical Decision Support computes metrics and produces
+   `StatisticalFinding` records with confidence labels.
+4. Historical Pattern Discovery correlates market-intelligence
+   context (Phase 2 modules) with trade outcomes and produces
+   `PatternHypothesis` records.
+5. Feature Importance Analysis ranks features and produces
+   `FeatureImportanceScore` records.
+6. Strategy Weight Recommender consumes feature-importance output
+   and produces `WeightRecommendation` records with a required
+   promotion state (never `production` directly).
+7. Learning Reports aggregate all outputs into a Markdown + JSON
+   report bundle, writing to `reports/learning/<report_id>/` by
+   default.
+8. Operators (humans) review the report, decide whether to record
+   evidence on the relevant `PromotionEntry`, and — if promoting —
+   record an `ApprovalRecord`. The Learning System itself never
+   performs steps 8.
+
+#### Storage
+- Inputs: read-only artifact tree under `reports/backtests/…` and the
+  existing `trades_history.db`. No new writes to input paths.
+- Outputs: `reports/learning/<report_id>/report.md`,
+  `report.json`, `recommendations.json`, `manifest.json`.
+- Recommendation records may also be referenced from `PromotionEntry`
+  evidence dicts, but the entries themselves are human-authored data
+  files or operations records, never generated automatically.
+
+#### Configuration
+- All Learning System settings live in explicit config parameters
+  passed to the analysis functions or dataclasses — no reads from
+  `strategy/config.py` beyond `FeatureFlags` (used only to verify
+  disabled state).
+- No production trading config may be modified by a Learning System
+  run.
+- No feature flag may be enabled as a side effect of a Learning
+  System run.
+
+### Hard Safety Rules
+
+These rules apply to every Phase 4 card. A card that cannot satisfy
+all of them is out of scope and must be re-plotted before work
+begins.
+
+1. **Recommendations only.** Every output is a labeled recommendation
+   record with confidence, sample size, methodology, and evidence ids.
+2. **No automatic production changes.** No module may write to
+   `strategy/config.py`, mutate the `FeatureFlags` singleton, or
+   change any file under `.hermes-profile/`.
+3. **No feature flags enabled.** Modules may read
+   `FeatureFlags.all_disabled` to assert isolation, but never
+   `enable`/`disable` any flag.
+4. **No buy/sell logic changed.** Modules may not import `trader.py`,
+   `crypto_trader.py`, `strategy/runner.py`, `trader_cli.py`,
+   `telegram_approvals.py`, or any scheduler / cron entry.
+5. **No broker / order-path integration.** No `alpaca`,
+   `TradingClient`, `place_order`, `submit_order`, `yfinance`,
+   `api_key`, or credential references. Historical validation paper
+   account remains documentation-only (see [[reference-validation-alpaca-account]]).
+6. **Human approval required.** Recommendations may advance
+   promotion state only via `PromotionEntry.evidence` plus a
+   human-authored `ApprovalRecord`. The Learning System never
+   constructs an `ApprovalRecord` autonomously.
+7. **Deterministic.** Given a fixed input artifact set, every module
+   produces byte-identical outputs. Reports carry a `stable_hash`
+   independent of `generated_at`.
+8. **Terminology.** Validation, replay, and research. Never
+   "training".
+
+### Kanban Breakdown
+
+Each Phase 4 card must be independently testable and reversible. No
+card may enable behavior-changing feature flags or write to production
+config.
+
+#### `t_phase4_plan` — Learning System Technical Design
+- **Status:** Done
+- **Scope:** Planning only. No code. Establishes architecture, safety
+  rules, and card breakdown for Phase 4.
+- **Definition of Done:** ROADMAP Phase 4 section expanded with
+  architecture, interfaces, data flow, storage, safety rules, and
+  Kanban breakdown; KANBAN.md reflects the six implementation cards.
+
+#### `t_phase4_stats_engine` — Statistical Decision-Support Layer
+- **Status:** Ready
+- **Scope:** Add read-only descriptive statistics, confidence
+  intervals, effect-size estimates, and sample-size checks over the
+  trades log and Phase 3 comparison outputs. Produce
+  `StatisticalFinding` records labeled `hypothesis` or `validated`.
+- **Definition of Done:** Deterministic findings for a fixed input
+  artifact set; JSON schema tests for `StatisticalFinding`; no
+  order-path imports; no flag mutations.
+- **Validation:** Tests for correct effect-size math on known
+  fixtures, confidence-interval boundary behavior, sample-size floor
+  enforcement, and reproducibility.
+
+#### `t_phase4_pattern_discovery` — Historical Pattern Discovery
+- **Status:** Backlog (depends on Phase 2 intelligence modules only)
+- **Scope:** Identify co-occurring conditions across regime, sector
+  leadership, market breadth, and relative strength history that
+  correlate with trade outcomes. Emit `PatternHypothesis` records —
+  never validated without an explicit out-of-sample check.
+- **Definition of Done:** Discovered patterns come with supporting
+  evidence ids, sample sizes, and confidence labels; all patterns
+  default to `hypothesis`.
+- **Validation:** Tests for hypothesis vs validated labeling, minimum
+  sample-size gate, deterministic pattern ordering, and evidence-id
+  provenance.
+
+#### `t_phase4_feature_importance` — Feature Importance Analysis
+- **Status:** Backlog (depends on `t_phase4_stats_engine`)
+- **Scope:** Correlate score components, disagreement kinds, and
+  market-context features with realized outcomes across the harness
+  event windows. Produce ranked `FeatureImportanceScore` records.
+- **Definition of Done:** Scores are deterministic, method metadata is
+  recorded, and low-sample features are flagged rather than silently
+  reported.
+- **Validation:** Tests for methodology metadata, sample-size flagging,
+  deterministic ordering, and rejection of look-ahead inputs (features
+  computed after the outcome window).
+
+#### `t_phase4_weight_recommender` — Strategy Weight Recommender
+- **Status:** Backlog (depends on `t_phase4_feature_importance`)
+- **Scope:** Suggest adjusted weights for Champion scoring components
+  (e.g., `SELL_SCORE_FACTOR_WEIGHTS`) based on feature-importance
+  output. Emit `WeightRecommendation` records that name the target
+  config key, current value, proposed value, rationale, and required
+  promotion state.
+- **Definition of Done:** Module never writes to `strategy/config.py`;
+  recommendations always include a `required_promotion_state` no
+  higher than `paper_trading`; unit tests prove config immutability.
+- **Validation:** Tests for config-write refusal, `RecommendationEnvelope`
+  round-trip through `PromotionEntry.evidence`, and refusal to
+  recommend `production` directly.
+
+#### `t_phase4_learning_reports` — Learning Report Generation
+- **Status:** Backlog (depends on all four analysis cards)
+- **Scope:** Aggregate `StatisticalFinding`, `PatternHypothesis`,
+  `FeatureImportanceScore`, and `WeightRecommendation` records into a
+  `LearningReport` bundle. Mirror the Phase 3 `ResearchReport` layout
+  (`report_id`, manifest, `stable_hash`, four artifact files).
+- **Definition of Done:** Bundle writes four files under
+  `reports/learning/<report_id>/`; `stable_hash` independent of
+  `generated_at`; report id derived from source stable hash.
+- **Validation:** Snapshot tests for Markdown structure; JSON schema
+  tests; determinism tests; idempotent write.
+
+#### `t_phase4_validation` — End-to-End Learning System Validation
+- **Status:** Backlog (depends on all five implementation cards)
+- **Scope:** Wire the Learning System end-to-end against a frozen
+  Phase 3 artifact set (test fixtures under `tests/fixtures/`) and
+  assert determinism, feature-flag isolation, no order-path imports,
+  and no writes outside the configured `reports/learning/` root.
+- **Definition of Done:** A single test target replays the full
+  pipeline twice and asserts byte-identical outputs; a separate test
+  target proves flag isolation and forbidden-import bans.
+- **Validation:** Tests must cover: byte-identical reruns, empty input
+  handling, missing-input handling, and refusal to write outside the
+  configured output root.
+
+### Dependencies
+
+- `t_phase4_stats_engine` depends only on Phase 3 artifacts (available).
+- `t_phase4_pattern_discovery` depends only on Phase 2 intelligence
+  modules (available).
+- `t_phase4_feature_importance` depends on `t_phase4_stats_engine`.
+- `t_phase4_weight_recommender` depends on `t_phase4_feature_importance`.
+- `t_phase4_learning_reports` depends on all four analysis cards.
+- `t_phase4_validation` depends on all five implementation cards.
+
+### Architectural Risks
+
+- **Overfitting.** Feature importance and weight recommendations may
+  fit noise. Mitigation: require walk-forward evidence before any
+  weight recommendation targets `paper_trading` or above.
+- **Small-sample findings.** Statistical findings may look strong on
+  short windows. Mitigation: hard sample-size floors enforced by the
+  stats engine.
+- **Metric gaming.** Recommendations optimizing one metric may degrade
+  drawdown or concentration. Mitigation: the weight recommender must
+  cite the rollback criteria in `strategy.promotion_gates` and refuse
+  to recommend changes that would trigger a standard rollback.
+- **Silent config drift.** A future contributor may wire a
+  recommendation directly into `strategy/config.py`. Mitigation: the
+  weight recommender's tests must prove config immutability via
+  file-content assertions.
+- **Look-ahead bias.** Features computed after the outcome window may
+  leak into importance analysis. Mitigation: feature-importance tests
+  explicitly reject post-outcome features.
+- **Artifact sprawl.** Learning reports may accumulate. Mitigation:
+  `stable_hash`-derived `report_id`s de-duplicate reruns.
 
 ---
 
