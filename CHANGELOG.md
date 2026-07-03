@@ -8,8 +8,27 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase3_champion_challenger`
+**Commit:** `1b341ef`, plus policy addendum `a0fa765` and validation board update
+
+### Validation
+- 500 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- Harness confirmed read-only and deterministic (verified `stable_hash`
+  and `run_id` independent of `generated_at`; repeated runs produce
+  byte-identical `to_dict()` output)
+- No references to `alpaca`, `place_order`, `submit_order`, or
+  `TradingClient` in `strategy/comparison_harness.py`
+- No credentials, env vars, SDK calls, or account wiring added
+- Historical validation paper account remains documentation-only (no
+  code path in the harness reads from it)
+- Terminology audit passed: docs refer to validation, replay, or
+  research — no "training" usage
+- Feature flags remain `all_disabled` after harness runs; runner,
+  scheduler, Telegram, CLI, and plugin behavior unchanged
+- Card `t_phase3_champion_challenger` moved to Done
+- Card `t_phase3_rs_challenger` unblocked and moved to Ready
 
 ### Added
 - `strategy/comparison_harness.py` — read-only Champion/Challenger comparison

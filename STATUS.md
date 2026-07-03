@@ -6,15 +6,15 @@
 - Challenger: none
 
 ## Sprint
-- Current: Phase 3 Champion/Challenger Comparison Harness (`t_phase3_champion_challenger`, Review)
-- Last completed: Phase 3 Research Data Catalog (`t_phase3_data_catalog`)
+- Current: Phase 3 Relative Strength Challenger Overlay (`t_phase3_rs_challenger`, Ready)
+- Last completed: Phase 3 Champion/Challenger Comparison Harness (`t_phase3_champion_challenger`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Comparison harness implementation)
+- Commit: latest HEAD (Comparison harness validation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Champion/Challenger comparison harness implemented; awaiting Hermes validation
+- Status: Champion/Challenger comparison harness validated; Relative Strength Challenger Overlay ready
 
 ## Testing
 - Tests passing: 500
