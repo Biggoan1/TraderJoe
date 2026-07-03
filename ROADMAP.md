@@ -933,7 +933,7 @@ config.
 
 ## Phase 5 — Research Execution
 
-**Status:** DESIGN COMPLETE
+**Status:** COMPLETE
 
 **Objective:** Use the dedicated Research Alpaca paper account, a
 local LLM-based research assistant, and the last 2 months of
@@ -1228,7 +1228,7 @@ read-only.  Order-path behavior is untouched throughout.
   module.
 
 #### `t_phase5_two_month_validation_run` — Two-Month Historical Validation
-- **Status:** Review
+- **Status:** Done
 - **Implementation note:** `strategy/historical_validation.py` adds
   `HistoricalValidationConfig` (frozen dataclass; locks
   `flag_name` to `enable_relative_strength`), a
@@ -1259,6 +1259,26 @@ read-only.  Order-path behavior is untouched throughout.
   `strategy/config.py` bytes verified unchanged before and after a
   run; no order-path references; no credential env reads;
   terminology audit passes.
+- **Validation outcome:** 1198 tests passing (0 failing);
+  fixture/offline mode is the default and a research_client
+  passed with `live_fetch=False` is provably never called
+  (verified via `FailIfCalled.fetch_bars` raising
+  `AssertionError` on invocation without triggering it);
+  `live_fetch=True` without a client raises
+  `LiveFetchNotAvailableError`; `PromotionEntry.current_state ==
+  "disabled"`, `.approvals == []`, and `.flag_name ==
+  "enable_relative_strength"` after every run; evidence carries
+  `dataset_id`, `experiment_manifest`, `backtest_report_id`,
+  `walk_forward_report_id`, and `learning_report_id`;
+  `strategy/config.py` bytes byte-identical before and after a
+  run; comparison / walk-forward / learning `stable_hash` values
+  match across two independent runs of the same config;
+  global `FeatureFlags` singleton remains `all_disabled`
+  throughout; source-safety scan confirms no `submit_order` /
+  `place_order` / `cancel_order` / `TradingClient` / `yfinance` /
+  `ApprovalRecord(` references and no `ALPACA_*` / `APCA_*` /
+  `RESEARCH_ALPACA_*` env reads; terminology audit passes.  Commit
+  `5f03320`.
 - **Scope:** Add `HistoricalValidationConfig` and
   `run_historical_validation(config)`.  The orchestrator uses the
   Research Account Client to ingest two months of bars for the

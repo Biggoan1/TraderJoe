@@ -72,5 +72,5 @@ Hermes is not orchestrating this work item. Current repository snapshot:
 | `t_phase5_plan` | Phase 5: Research Execution Technical Design | Phase 5 | Done |
 | `t_phase5_research_account_api` | Phase 5: Isolated Research Alpaca Client | Phase 5 | Done |
 | `t_phase5_local_llm_research_assistant` | Phase 5: Local LLM Research Assistant | Phase 5 | Done |
-| `t_phase5_two_month_validation_run` | Phase 5: Two-Month Historical Validation | Phase 5 | Review |
+| `t_phase5_two_month_validation_run` | Phase 5: Two-Month Historical Validation | Phase 5 | Done |
 | `t_phase55_dashboard_plan` | Phase 5.5: Research & Learning Dashboard — Technical Design | Phase 5.5 | Backlog |

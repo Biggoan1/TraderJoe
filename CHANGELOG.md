@@ -8,8 +8,37 @@ Trader Joe release history.
 
 **Date:** 2026-07-03
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase5_two_month_validation_run`
+**Commit:** `5f03320`, plus validation board update
+
+### Validation
+- 1198 tests passing (0 failing); working tree clean prior to
+  validation commit
+- Fixture/offline mode is the default; a research_client passed
+  with `live_fetch=False` is verifiably never called
+- `live_fetch=True` without a research_client raises
+  `LiveFetchNotAvailableError` — the orchestrator refuses to
+  silently fall through
+- `PromotionEntry.current_state == "disabled"` and `.approvals ==
+  []` after every run; targets `enable_relative_strength` only
+- `strategy/config.py` bytes byte-identical before and after a
+  full run
+- Determinism verified: two independent runs of the same config
+  produce identical comparison / walk-forward / learning
+  `stable_hash` values
+- Global `FeatureFlags` singleton remains `all_disabled`
+  throughout
+- Source-safety scan confirms:
+  no `submit_order` / `place_order` / `cancel_order` /
+  `TradingClient` / `yfinance` references;
+  no `from trader` / `from crypto_trader` / `from trader_cli` /
+  `from telegram_approvals` / `from strategy.runner` imports;
+  no `ApprovalRecord(` construction anywhere in the source;
+  no `ALPACA_*` / `APCA_*` / `RESEARCH_ALPACA_*` env reads;
+  terminology audit passes
+- Card `t_phase5_two_month_validation_run` moved to Done
+- **Phase 5 is complete — 4/4 cards Done**
 
 ### Added
 - `strategy/historical_validation.py` — end-to-end orchestrator
