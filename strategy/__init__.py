@@ -156,6 +156,16 @@ from strategy.stats_engine import (
     normal_mean_ci,
     wilson_proportion_ci,
 )
+from strategy.pattern_discovery import (
+    OUTCOME_KEY_RETURN_PCT,
+    OUTCOME_KEY_WIN,
+    PATTERN_MIN_SAMPLE_SIZE,
+    PatternHypothesis,
+    PatternObservation,
+    discover_patterns,
+    hypotheses_stable_hash,
+    validate_patterns_out_of_sample,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -246,6 +256,14 @@ __all__ = [
     "findings_stable_hash",
     "normal_mean_ci",
     "wilson_proportion_ci",
+    "OUTCOME_KEY_RETURN_PCT",
+    "OUTCOME_KEY_WIN",
+    "PATTERN_MIN_SAMPLE_SIZE",
+    "PatternHypothesis",
+    "PatternObservation",
+    "discover_patterns",
+    "hypotheses_stable_hash",
+    "validate_patterns_out_of_sample",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",

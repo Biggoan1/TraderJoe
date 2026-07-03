@@ -715,7 +715,7 @@ config.
   commit `7005254`.
 
 #### `t_phase4_pattern_discovery` — Historical Pattern Discovery
-- **Status:** Ready
+- **Status:** Review
 - **Scope:** Identify co-occurring conditions across regime, sector
   leadership, market breadth, and relative strength history that
   correlate with trade outcomes. Emit `PatternHypothesis` records —
@@ -726,6 +726,21 @@ config.
 - **Validation:** Tests for hypothesis vs validated labeling, minimum
   sample-size gate, deterministic pattern ordering, and evidence-id
   provenance.
+- **Implementation note:** `strategy/pattern_discovery.py` adds
+  `PatternObservation`, `PatternHypothesis`, `discover_patterns`,
+  `validate_patterns_out_of_sample`, and `hypotheses_stable_hash`.
+  `discover_patterns` groups observations by sorted feature-key
+  tuples, computes win rate (Wilson CI), mean return (normal-approx
+  CI), and Cohen's d, and emits records with `LABEL_HYPOTHESIS` and
+  supporting evidence trade ids.  Groups below the sample-size floor
+  (`PATTERN_MIN_SAMPLE_SIZE = 10` default) are skipped.
+  `validate_patterns_out_of_sample` promotes to `LABEL_VALIDATED`
+  only when the OOS group meets the sample floor, the OOS mean-return
+  direction matches, and the OOS win-rate direction matches;
+  otherwise the record stays `LABEL_HYPOTHESIS` with a detail note.
+  Reuses the stats-engine helpers (`normal_mean_ci`,
+  `wilson_proportion_ci`, `cohens_d_one_sample`).  Never imports
+  `strategy.config`; never references any order-path module.
 
 #### `t_phase4_feature_importance` — Feature Importance Analysis
 - **Status:** Backlog (depends on `t_phase4_stats_engine`)

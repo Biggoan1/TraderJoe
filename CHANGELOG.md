@@ -4,6 +4,79 @@ Trader Joe release history.
 
 ---
 
+## v0.19.0 — Phase 4: Historical Pattern Discovery
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase4_pattern_discovery`
+
+### Added
+- `strategy/pattern_discovery.py` — read-only pattern discovery over
+  bucketed market-context and realized-outcome trade observations
+- `PatternObservation` frozen dataclass with trade id, entry/exit
+  timestamps, context dict, outcome dict, and metadata; rejects
+  empty required fields and out-of-order exit timestamps
+- `PatternHypothesis` frozen dataclass with sample size, win rate +
+  Wilson CI, mean return + normal-approx CI, Cohen's d one-sample
+  effect size, `hypothesis` / `validated` label, and sorted
+  supporting evidence ids
+- `discover_patterns` groups observations by sorted feature-key
+  tuples, computes descriptive statistics, and emits hypotheses
+  labeled `LABEL_HYPOTHESIS` for each feature combination meeting
+  `PATTERN_MIN_SAMPLE_SIZE` (default 10)
+- `validate_patterns_out_of_sample` promotes to `LABEL_VALIDATED`
+  only when the OOS group meets the sample floor, the mean-return
+  direction matches, and the win-rate direction matches; otherwise
+  re-emits with `LABEL_HYPOTHESIS` and a detail note explaining the
+  gap
+- `hypotheses_stable_hash` deterministic order-independent hash
+
+### Tests
+- `tests/test_pattern_discovery.py` — 47 tests covering:
+  - `PatternObservation`: roundtrip, context/outcome helpers, and all
+    validation errors
+  - `PatternHypothesis`: roundtrip, `features()` helper,
+    `is_significant_return` at CI boundaries, all validation errors
+    including mismatched key/value lengths
+  - `discover_patterns`: every emitted hypothesis defaults to
+    `LABEL_HYPOTHESIS`; per-feature-combination groups produced; win
+    rate / mean return / CI math on constant-value fixtures; below-
+    floor groups skipped; evidence ids sorted and reference source
+    trade ids; deterministic ordering; single-key grouping; empty
+    feature-key tuple skipped; observations missing context or
+    outcome silently dropped; negative floor and unsupported
+    confidence rejected; confidence level propagates for all
+    supported levels
+  - `validate_patterns_out_of_sample`: promotion to
+    `LABEL_VALIDATED` on directional match; stays `LABEL_HYPOTHESIS`
+    on return-direction flip; stays `LABEL_HYPOTHESIS` on OOS-sample
+    shortfall; win-rate direction mismatch stays `LABEL_HYPOTHESIS`;
+    pattern id preserved across validation; negative floor rejected
+  - `hypotheses_stable_hash` deterministic and order-independent
+  - Observational-only: no `alpaca`, `place_order`, `submit_order`,
+    `TradingClient`, `api_key`, or `yfinance` references; terminology
+    check; module never mutates global feature flags; never imports
+    `strategy.config`; import-time exclusion of `trader_cli`,
+    `trader`, `crypto_trader`, `telegram_approvals`
+- 762 passing total (0 failures)
+
+### Notes
+- Module is behavior-neutral: production Champion path is unchanged;
+  runner, scheduler, Telegram, CLI, and plugin behavior untouched
+- No feature flags enabled; module never imports `strategy.config`
+- No broker credentials, HTTP calls, or historical validation paper
+  account wiring
+- The `validated` label indicates only that the pattern's directional
+  effect held on a disjoint observation window; it is **not** a
+  promotion signal and does not by itself justify advancing a feature
+  past `disabled`
+- Follow-up cards remain in Backlog:
+  `t_phase4_feature_importance`, `t_phase4_weight_recommender`,
+  `t_phase4_learning_reports`, `t_phase4_validation`
+
+---
+
 ## v0.18.0 — Phase 4: Statistical Decision-Support Layer
 
 **Date:** 2026-07-02
