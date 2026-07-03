@@ -67,6 +67,15 @@ from strategy.backtest_lab import (
     NoOpStrategyAdapter,
     StrategyEvaluation,
 )
+from strategy.data_catalog import (
+    DataCatalog,
+    DatasetFile,
+    DatasetManifest,
+    DatasetValidationResult,
+    KNOWN_DATASET_KINDS,
+    build_dataset_manifest,
+    sha256_file,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -82,6 +91,13 @@ __all__ = [
     "DeterministicReplayClock",
     "NoOpStrategyAdapter",
     "StrategyEvaluation",
+    "DataCatalog",
+    "DatasetFile",
+    "DatasetManifest",
+    "DatasetValidationResult",
+    "KNOWN_DATASET_KINDS",
+    "build_dataset_manifest",
+    "sha256_file",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",

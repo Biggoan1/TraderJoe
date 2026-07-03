@@ -4,6 +4,66 @@ Trader Joe release history.
 
 ---
 
+## v0.12.0 — Phase 3: Research Data Catalog
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase3_data_catalog`
+
+### Added
+- `strategy/data_catalog.py` — read-only Research Data Catalog
+- `DatasetFile`, `DatasetManifest`, and `DatasetValidationResult` dataclasses
+  with structural validation and stable JSON serialization
+- `DataCatalog.from_directory()` loads immutable manifests from
+  `research_data/manifests/` and rejects duplicate dataset ids
+- `DataCatalog.list()` / `get()` / `has()` for read-only lookup with kind
+  filtering across `historical_bars`, `benchmark`, `paper_log`, and
+  `research_context`
+- `DataCatalog.validate()` verifies file existence, size, SHA-256, and
+  CSV / JSON schema against the manifest and never mutates the dataset
+- `DataCatalog.validate_all()` produces one result per registered dataset
+- `DataCatalog.checksum_file()` recomputes the on-disk SHA-256 for a
+  referenced file
+- `DataCatalog.reproducibility_metadata()` returns manifest hash, kind,
+  source, imported timestamp, and per-file checksums for run manifests
+- `build_dataset_manifest()` operator helper computes checksums offline
+- `sha256_file()` streaming hash utility
+- Manifest `stable_hash()` ignores `imported_at` for deterministic run ids
+
+### Tests
+- `tests/test_data_catalog.py` — 45 tests covering:
+  - Dataset kind constants
+  - `DatasetFile` roundtrip, tuple coercion, and validation errors
+  - `DatasetManifest` roundtrip, deterministic hashing, validation errors,
+    and duplicate-file-path rejection
+  - `build_dataset_manifest` computes real checksums and rejects missing files
+  - `sha256_file` matches `hashlib` for identical bytes
+  - Catalog loading (sorted, filtered, missing dir, duplicate id rejection)
+  - Validation success, missing file, checksum mismatch, size mismatch,
+    CSV schema mismatch, JSON schema success, JSON schema missing key,
+    unspecified-schema warning, and `validate_all` result ordering
+  - `validate` and `validate_all` do not mutate manifest or data bytes
+  - `checksum_file` matches on-disk digest and rejects unregistered paths
+  - `reproducibility_metadata` contains manifest hash, kind, source,
+    imported timestamp, symbols/benchmarks, and file checksums; is
+    deterministic across calls
+  - Observational-only guarantees: no `alpaca`, `place_order`, or
+    `TradingClient` references, and feature flags remain all disabled
+- 473 passing total (0 failures)
+
+### Notes
+- Registry is strictly read-only — no dataset files or manifests are
+  written by the catalog itself
+- Operator helper `build_dataset_manifest` is offline and not called by
+  catalog reads
+- No live brokerage calls, order placement, buy/sell logic, runner
+  behavior, or feature flags changed
+- `research_data/` remains untracked in this commit; manifests are
+  produced offline before being checked in
+
+---
+
 ## v0.11.0 — Phase 3: Backtest Lab Foundation
 
 **Date:** 2026-07-02

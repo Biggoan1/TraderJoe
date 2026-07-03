@@ -56,7 +56,7 @@ Hermes is not orchestrating this work item. Current repository snapshot:
 | `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Done |
 | `t_phase3_plan` | Phase 3: Decision Engine Technical Design | Phase 3 | Done |
 | `t_phase3_backtest_lab` | Phase 3: Backtest Lab Foundation | Phase 3 | Done |
-| `t_phase3_data_catalog` | Phase 3: Research Data Catalog | Phase 3 | Ready |
+| `t_phase3_data_catalog` | Phase 3: Research Data Catalog | Phase 3 | Review |
 | `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Backlog |
 | `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Backlog |
 | `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Backlog |
