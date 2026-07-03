@@ -373,6 +373,17 @@ with metrics and commit/run references.
 - Paper-trading comparison snapshots from Champion and Challenger shadow runs.
 - Daily digest outputs as human-readable supporting context.
 
+#### Validation Paper Account (future data source)
+- A separate Alpaca paper account exists as a dedicated Backtest Lab / historical replay data source for research use only.
+- Isolation rules (must hold before any integration is added):
+  - Must remain separate from the live account and from the normal paper-trading account.
+  - Must never be used by the live runner (`trader.py`, `crypto_trader.py`, `strategy/runner.py`, scheduler, Telegram approval path, `trader_cli.py`).
+  - Credentials must not be shared with production or the active paper-trading account.
+  - Permitted uses only: historical replay, walk-forward validation, Champion/Challenger comparison, and strategy evaluation.
+  - Referred to as validation, replay, or research — never as "training."
+- No account integration is implemented yet. Adding SDK calls, credentials, env plumbing, or runner wiring is out of scope for any card whose scope does not explicitly require it (currently: none).
+- Expected consumers when integration lands: `t_phase3_walk_forward`, and any card that explicitly scopes ingestion into `strategy/data_catalog.py`.
+
 #### Research Notebook Integration
 - Notebook entries reference run ids, hypothesis ids, and evidence summaries.
 - Notebook conclusions must distinguish hypotheses from validated findings.
@@ -415,6 +426,7 @@ approved production rollout.
 - **Definition of Done:** Same input stream produces comparable score tables and disagreement records.
 - **Validation:** Tests prove identical inputs, deterministic outputs, and no order-path imports/calls.
 - **Implementation note:** `strategy/comparison_harness.py` implements a read-only `ComparisonHarness` with a `ComparisonEvaluator` protocol satisfied by the existing `NoOpStrategyAdapter`. Per-event `ScoreTable` and `ScoreRow` align Champion and Challenger scores, ranks, selection, score deltas, and rank deltas. `DisagreementRecord` classifies divergences as `ranking_only`, `entry_selection`, `score_delta`, or `data_unavailable`. `ChampionChallengerRunMetadata.run_id` is derived from a deterministic hash of champion/challenger ids, dataset id, event signature, seed, and threshold; `stable_hash` on the full comparison ignores `generated_at`. No Relative Strength Challenger logic, order-path imports, or feature-flag mutation.
+- **Future data source:** A separate Alpaca paper account exists as a dedicated Backtest Lab / historical replay data source for research use only (see "Validation Paper Account" under Data Requirements). It is not integrated in this card and no code path in the harness reads from it. Integration is deferred to a card whose scope explicitly requires it (candidate: `t_phase3_walk_forward`).
 
 #### `t_phase3_rs_challenger` — Relative Strength Challenger Overlay
 - **Status:** Backlog

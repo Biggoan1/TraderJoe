@@ -72,6 +72,15 @@ Trader Joe release history.
 - No feature flags enabled; `strategy/config.py` untouched
 - Relative Strength Challenger (`t_phase3_rs_challenger`) and
   Walk-Forward Pipeline (`t_phase3_walk_forward`) remain in Backlog
+- A separate Alpaca paper account is documented as a **future**
+  validation data source (see ROADMAP "Validation Paper Account"). This
+  card does not integrate it — no credentials, SDK calls, env plumbing,
+  or runner wiring were added. Isolation rules: must remain separate
+  from the live and normal paper accounts, must never be used by the
+  live runner, must not share credentials with production, and is
+  reserved for historical replay, walk-forward validation, and
+  Champion/Challenger comparison only. Referred to as validation,
+  replay, or research — never "training."
 
 ---
 
