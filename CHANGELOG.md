@@ -8,8 +8,8 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
-**Commit:** this commit
+**Status:** Done
+**Commit:** 968b5f5, plus validation board update
 
 ### Added
 - `strategy/backtest_lab.py` — Backtest Lab foundation data contracts
@@ -41,7 +41,8 @@ Trader Joe release history.
 - Foundation only — no historical replay engine yet
 - No Relative Strength Challenger implementation
 - No live brokerage calls, order placement, buy/sell logic, runner behavior, or feature flags changed
-- Card `t_phase3_backtest_lab` moved to Review for validation
+- Card `t_phase3_backtest_lab` validated and moved to Done
+- Card `t_phase3_data_catalog` unblocked and moved to Ready
 
 ---
 

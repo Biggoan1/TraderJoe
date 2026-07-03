@@ -6,15 +6,15 @@
 - Challenger: none
 
 ## Sprint
-- Current: Phase 3 Backtest Lab (`t_phase3_backtest_lab`, Review)
-- Last completed: 10
+- Current: Phase 3 Research Data Catalog (`t_phase3_data_catalog`, Ready)
+- Last completed: Phase 3 Backtest Lab (`t_phase3_backtest_lab`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Backtest Lab foundation)
+- Commit: latest HEAD (Backtest Lab validation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Backtest Lab foundation implemented, awaiting validation
+- Status: Backtest Lab foundation validated; Research Data Catalog ready
 
 ## Testing
 - Tests passing: 428
@@ -37,6 +37,6 @@
 - TODOs: 12
 
 ## Phase
-- Current: 3 (Decision Engine planning)
+- Current: 3 (Decision Engine research platform)
 - Phase 1: complete
 - Phase 2: complete (6/6 complete)
