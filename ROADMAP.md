@@ -490,7 +490,7 @@ approved production rollout.
 
 ## Phase 4 — Learning System
 
-**Status:** DESIGN COMPLETE
+**Status:** COMPLETE (recommendations-only Learning System in place; no automatic promotions)
 
 **Objective:** Turn the Phase 3 research platform into a
 recommendations-only Learning System that surfaces measurable evidence
@@ -858,7 +858,7 @@ config.
   `878c50e`.
 
 #### `t_phase4_validation` — End-to-End Learning System Validation
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Wire the Learning System end-to-end against a frozen
   Phase 3 artifact set (test fixtures under `tests/fixtures/`) and
   assert determinism, feature-flag isolation, no order-path imports,
@@ -887,6 +887,15 @@ config.
   `trader`, `crypto_trader`, and `telegram_approvals`, and audits
   terminology to catch any stray "training" references outside the
   policy sentence.
+- **Validation outcome:** 919 tests passing; two independent
+  pipeline runs sharing `generated_at` produce byte-identical files;
+  `stable_hash` and `report_id` independent of `generated_at`;
+  `output_root` auto-created when missing; no files land outside
+  `output_root` (verified by inspecting the parent directory);
+  symlinked root still lands inside the real target;
+  `strategy/config.py` bytes unchanged before/after a run; global
+  feature flags remain all disabled; no order-path modules pulled
+  into `sys.modules` during pipeline execution; commit `6d886b2`.
 
 ### Dependencies
 

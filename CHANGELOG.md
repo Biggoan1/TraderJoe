@@ -8,8 +8,33 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase4_validation`
+**Commit:** `6d886b2`, plus validation board update
+
+### Validation
+- 919 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- Two independent `LearningPipeline` runs sharing the same
+  fixtures and `generated_at` produce byte-identical files
+- `stable_hash` and `report_id` independent of `generated_at`
+- `output_root` auto-created if missing; no files land outside the
+  configured root (verified by inspecting the parent directory)
+- Symlinked root resolves into the real target and stays inside it
+- Global `FeatureFlags` singleton remains disabled after pipeline
+  runs
+- `strategy/config.py` bytes byte-identical before and after a
+  pipeline run
+- No order-path modules (`trader_cli`, `trader`, `crypto_trader`,
+  `telegram_approvals`) pulled into `sys.modules` during pipeline
+  execution
+- Forbidden-import audit passes across every Phase 4 module
+  (`stats_engine`, `pattern_discovery`, `feature_importance`,
+  `weight_recommender`, `learning_reports`, `learning_pipeline`)
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase4_validation` moved to Done
+- **Phase 4 is complete — 7 / 7 cards Done**
 
 ### Added
 - `strategy/learning_pipeline.py` — thin orchestrator that renders
