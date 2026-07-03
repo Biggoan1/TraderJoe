@@ -931,22 +931,282 @@ config.
 
 ---
 
-## Phase 5 — Research Platform
+## Phase 5 — Research Execution
 
-**Status:** PLANNED
+**Status:** DESIGN COMPLETE
 
-**Objective:** Laboratory for strategy development.
+**Objective:** Use the dedicated Research Alpaca paper account, a
+local LLM-based research assistant, and the last 2 months of
+historical market data to run a reproducible historical validation of
+Champion vs the Relative Strength Challenger.  Phase 5 produces
+evidence artifacts only.  It does not enable a feature flag, place
+live orders, share credentials with the live runner, or advance
+promotion state.
 
-- Backtesting Framework
-- Walk-Forward Analysis
-- Parameter Optimization
-- Monte Carlo Simulation
-- Champion/Challenger Analytics
-- Strategy Comparison Dashboard
-- Performance Attribution
-- Risk Analysis
+The original Phase 5 stub ("Backtesting Framework, Walk-Forward
+Analysis, Parameter Optimization, Monte Carlo Simulation, Champion /
+Challenger Analytics, Strategy Comparison Dashboard, Performance
+Attribution, Risk Analysis") is subsumed by the Phase 3 research
+platform and the Phase 4 Learning System.  Phase 5 executes those
+platforms against real historical data using an isolated account, a
+local LLM digest, and a two-month validation run.
 
-**Exit Criteria:** Strategies validated on historical and forward-looking data before promotion.
+**Exit Criteria:** A reproducible two-month historical validation
+run has produced comparison, walk-forward, learning, and promotion
+report bundles; a `PromotionEntry` for `enable_relative_strength`
+carries the report ids as evidence; no `ApprovalRecord` has been
+created; no feature flag has been enabled; and no live order was
+placed.
+
+### Planning Card: Research Execution Technical Design
+- **Card:** `t_phase5_plan`
+- **Status:** Done
+- **Scope:** Planning only.  No code, no feature flags enabled, no
+  trading behavior changed.
+- **Design outcome:** Three independently testable implementation
+  cards that together produce the two-month historical validation
+  evidence without any live trading impact.
+- **First implementation card:** `t_phase5_research_account_api` —
+  isolated Research Alpaca paper account client.
+
+### Research Execution Architecture
+
+Phase 5 is a read-only orchestration layer that consumes the Phase 3
+research platform and Phase 4 Learning System.  It never mutates
+production state.
+
+#### Components
+- **Research Account Client:** Isolated wrapper around the dedicated
+  Research Alpaca paper account.  Exposes only historical-data reads
+  (bars, calendar) — no order-placement methods.  Uses a distinct
+  configuration namespace and a distinct Python module.  Not imported
+  by any Phase 1-4 module.
+- **Local LLM Research Assistant:** Read-only summarizer that runs
+  against a local LLM endpoint (Ollama / LM Studio) and produces
+  natural-language digests of Backtest Lab, Walk-Forward, Learning,
+  and Promotion reports.  Never makes trading decisions.  Never sends
+  data to a cloud API.
+- **Historical Validation Orchestrator:** Ingests two months of bars
+  via the Research Account Client, writes `DataCatalog` manifests,
+  runs the Backtest Lab + Walk-Forward pipeline for Champion vs the
+  Relative Strength Challenger, runs the Learning System, generates
+  reports, and attaches the report ids to a `PromotionEntry` via
+  `RecommendationEnvelope` for human review.
+
+#### Interfaces
+- `ResearchAccountConfig`: dataclass carrying the Research Alpaca
+  endpoint and credential *keys* (not values); values are loaded
+  from a dedicated env-var namespace at run time.
+- `ResearchAccountClient`: exposes `fetch_bars(symbols, start, end)`,
+  `list_calendar(start, end)`, `paper_account_info()` (read-only).
+  Does not expose `submit_order`, `place_order`, or any mutation
+  method.
+- `LocalLLMClient`: protocol with `summarize(prompt, context) -> str`
+  and a system prompt that explicitly forbids trading
+  recommendations.
+- `LLMSummary`: frozen dataclass carrying summary text, model id,
+  prompt hash, source hash, and generated_at.  Deterministic hashes
+  for reproducibility.
+- `HistoricalValidationConfig`: dataclass with `dataset_root`,
+  `report_root`, `watchlist_symbols`, `benchmark_symbols`,
+  `window_start`, `window_end`, `champion_id`,
+  `challenger_id`, and `seed`.
+- `run_historical_validation(config)`: idempotent orchestrator
+  returning a `HistoricalValidationBundle` (paths to every artifact).
+
+#### Data Flow
+
+    ResearchAccountClient (read-only Alpaca API)
+        ↓ fetch bars + calendar for the last 2 months
+    Data Catalog manifests under research_data/
+        ↓ (immutable inputs)
+    Backtest Lab replay → ChampionChallengerComparison
+        ↓
+    Walk-Forward pipeline → WalkForwardReport
+        ↓
+    Learning System (stats + patterns + importance + weight recs)
+        ↓
+    Research Reports + Learning Reports written to disk
+        ↓
+    LocalLLMClient (local endpoint)
+        ↓ read-only natural-language digest
+    LLMSummary artifacts under reports/llm/<report_id>/
+        ↓
+    RecommendationEnvelope routes report ids into
+    PromotionEntry.evidence
+        ↓
+    STOP — no ApprovalRecord created; no feature flag enabled
+
+#### Storage
+- Inputs: read-only Alpaca API responses cached under
+  `research_data/<dataset_id>/`, plus manifests under
+  `research_data/manifests/<dataset_id>.json`.
+- Outputs: existing `reports/backtests/` and `reports/learning/`
+  trees plus a new `reports/llm/<report_id>/` tree for LLM digests.
+- Credentials: never written to disk by any Phase 5 module.  All
+  Alpaca credentials for the Research account are read from a
+  distinct env-var namespace only at API call time.
+
+#### Configuration
+- Research Alpaca env-var namespace: `RESEARCH_ALPACA_API_KEY`,
+  `RESEARCH_ALPACA_SECRET_KEY`, `RESEARCH_ALPACA_ENDPOINT`.  These
+  must never overlap with `ALPACA_*` used by the normal paper
+  account or with any crypto-account variables.
+- Local LLM endpoint: `RESEARCH_LLM_ENDPOINT`,
+  `RESEARCH_LLM_MODEL` (defaults to a local Ollama URL and a
+  small local model).  Never a cloud endpoint.
+- No production trading config may be modified by a Phase 5 run.
+- No feature flag may be enabled as a side effect of a Phase 5 run.
+
+### Hard Safety Rules
+
+Every Phase 5 card must satisfy all of the following.  A card that
+cannot is out of scope and must be re-plotted before work begins.
+
+1. **Research / replay / validation only.**  Every output is labeled
+   as a research artifact.  Never called "training".
+2. **No live trading impact.**  No changes to `trader.py`,
+   `crypto_trader.py`, `strategy/runner.py`, `trader_cli.py`,
+   `telegram_approvals.py`, any scheduler / cron entry, or any file
+   under `.hermes-profile/`.
+3. **No feature flags enabled.**  Phase 5 modules may read
+   `FeatureFlags.all_disabled` for isolation checks, but never
+   `enable` or `disable` a flag.
+4. **No production order path.**  Phase 5 modules may not import any
+   Alpaca-SDK client that exposes order-placement methods.  Research
+   account client wraps only read endpoints.
+5. **No shared credentials.**  Research Alpaca env-var namespace is
+   strictly disjoint from `ALPACA_*`.  A Phase 5 test asserts the
+   `os.environ` snapshot does not overlap during a validation run.
+6. **No cloud LLM.**  The local LLM client refuses to call a
+   non-localhost endpoint.
+7. **No automatic promotion.**  The orchestrator may attach report
+   ids to `PromotionEntry.evidence` but never constructs an
+   `ApprovalRecord` and never advances `current_state`.
+8. **Deterministic.**  Given the same input dataset, the same
+   config, and the same seed, every artifact is byte-identical
+   (LLM output uses temperature=0 and prompt-hash provenance to
+   confirm reproducibility).
+9. **Terminology.**  Validation, replay, and research.  Never
+   "training".
+
+### Kanban Breakdown
+
+Each Phase 5 card is independently testable, reversible, and
+read-only.  Order-path behavior is untouched throughout.
+
+#### `t_phase5_plan` — Research Execution Technical Design
+- **Status:** Done
+- **Scope:** Planning only.
+- **Definition of Done:** ROADMAP Phase 5 section expanded with
+  architecture, safety rules, and card breakdown; KANBAN.md reflects
+  the three implementation cards.
+
+#### `t_phase5_research_account_api` — Isolated Research Alpaca Client
+- **Status:** Ready
+- **Scope:** Add a new module (candidate: `strategy/research_account.py`)
+  containing `ResearchAccountConfig` and `ResearchAccountClient`.
+  The client exposes only historical-data reads (bars, calendar,
+  paper-account info) — no order-placement methods.  Credentials come
+  from `RESEARCH_ALPACA_*` env vars only.  No Phase 1-4 module may
+  import it, and it may not import any live-runner module.
+- **Definition of Done:** Client class exposes no mutation methods;
+  configuration namespace is strictly disjoint from `ALPACA_*`; unit
+  tests prove:
+  - The module source has no `submit_order`, `place_order`, or
+    `TradingClient` order-placement method references.
+  - Credentials are read from `RESEARCH_ALPACA_*` only.
+  - The live runner (`trader.py`, `crypto_trader.py`,
+    `strategy/runner.py`) does not import this module.
+  - The client refuses to construct itself when
+    `RESEARCH_ALPACA_*` env vars are missing.
+- **Validation:** Fixture-driven tests using a mocked HTTP layer;
+  environment-isolation tests; source-level order-path bans.
+
+#### `t_phase5_local_llm_research_assistant` — Local LLM Research Assistant
+- **Status:** Backlog (depends on `t_phase5_research_account_api`
+  for shared safety patterns; does not depend on it functionally)
+- **Scope:** Add a `LocalLLMClient` protocol and a concrete
+  implementation targeting a local endpoint (Ollama / LM Studio).
+  Add `LLMSummary` (frozen dataclass with model id, prompt hash,
+  source hash, generated_at).  Add renderers that produce a
+  human-readable digest of Backtest Lab, Walk-Forward, Learning, and
+  Promotion reports.  Every prompt embeds a system instruction
+  explicitly forbidding trading recommendations.
+- **Definition of Done:** Client refuses to call a non-localhost
+  endpoint; module source has no order-path references and no
+  cloud-LLM SDK imports; every summary artifact carries a
+  reproducibility manifest; module never mutates feature flags;
+  never invoked from any runner or scheduler.
+- **Validation:** Tests use a fake local endpoint with recorded
+  responses to prove determinism; a source-level test asserts the
+  module cannot resolve to a non-loopback host; a source-level test
+  asserts the system prompt contains the "no trading recommendations"
+  clause; a test asserts the module never imports `strategy.config`,
+  never mutates `FeatureFlags`, and never imports any live-runner
+  module.
+
+#### `t_phase5_two_month_validation_run` — Two-Month Historical Validation
+- **Status:** Backlog (depends on
+  `t_phase5_research_account_api` and
+  `t_phase5_local_llm_research_assistant`)
+- **Scope:** Add `HistoricalValidationConfig` and
+  `run_historical_validation(config)`.  The orchestrator uses the
+  Research Account Client to ingest two months of bars for the
+  configured watchlist + benchmarks, writes `DataCatalog` manifests
+  under `research_data/`, runs the Backtest Lab + Walk-Forward
+  pipeline for Champion vs the Relative Strength Challenger,
+  produces Research Reports and Learning Reports, invokes the Local
+  LLM Assistant to render human-readable digests, and attaches the
+  report ids to a `PromotionEntry` for `enable_relative_strength`
+  via `RecommendationEnvelope`.  No `ApprovalRecord` is created; no
+  feature flag is enabled.
+- **Definition of Done:** A CLI script (or `python -m` entrypoint)
+  runs the full validation end-to-end from a frozen fixture dataset;
+  a `--live-fetch` flag (default off) enables real Alpaca calls;
+  tests exercise the fixture path only; every artifact carries a
+  reproducibility hash; the orchestrator's `PromotionEntry` output
+  refuses to advance beyond `disabled`; two runs with the same seed
+  produce byte-identical artifacts.
+- **Validation:** End-to-end fixture-driven test with byte-identical
+  reruns; assertion that no order-path modules are imported at
+  runtime; assertion that `strategy/config.py` bytes are unchanged
+  before and after a run; assertion that the resulting
+  `PromotionEntry` has `current_state == "disabled"` and no
+  `ApprovalRecord`; source-level ban on `enable_relative_strength`
+  mutation.
+
+### Dependencies
+
+- `t_phase5_research_account_api` depends on nothing outside
+  Phases 3-4 (all available).
+- `t_phase5_local_llm_research_assistant` shares safety patterns
+  with the account client but is functionally independent.
+- `t_phase5_two_month_validation_run` depends on both prior cards
+  plus every Phase 3-4 module.
+
+### Architectural Risks
+
+- **Credential bleed.** If Research Alpaca credentials somehow reach
+  a Phase 1-4 module, live behavior could inherit them.  Mitigation:
+  distinct env-var namespace, source-level import bans, and a
+  test that inspects `os.environ` names.
+- **Cloud LLM regression.** A future contributor could point the
+  LLM client at a cloud endpoint.  Mitigation: source-level check
+  that the client refuses non-loopback endpoints and the model name
+  never contains "openai" / "anthropic" / "google" tokens.
+- **Automatic promotion drift.** The orchestrator could be modified
+  to build an `ApprovalRecord`.  Mitigation: source-level ban on
+  `ApprovalRecord(` construction inside Phase 5 modules.
+- **LLM data leakage.** Reports contain trade data; a cloud LLM
+  would leak them.  Mitigation: localhost-only client (see above).
+- **Rerun non-determinism.** LLM output at temperature > 0 breaks
+  reproducibility.  Mitigation: enforce `temperature=0.0` in the
+  client and store prompt hashes with every summary.
+- **"Training" terminology creep.** Contributors familiar with ML
+  may reintroduce "training" wording.  Mitigation: parametric
+  terminology audit across every Phase 5 module (same test pattern
+  used across Phase 4).
 
 ---
 
@@ -981,7 +1241,7 @@ human-monitored conditions.
   transitions through the seven promotion states independently.
 - Not a substitute for the rollback criteria in
   `strategy.promotion_gates.STANDARD_ROLLBACK_CRITERIA`.
-- Not achievable without complete Phase 5 (Research Platform) work.
+- Not achievable without complete Phase 5 (Research Execution) work.
 - Not compatible with any code path that imports order-path modules
   from a Phase 3 or Phase 4 module (the Phase 4 e2e test suite
   enforces this at CI time).
@@ -989,7 +1249,9 @@ human-monitored conditions.
 **Prerequisites (must all hold).**
 
 - Phases 1-4 complete. Currently satisfied.
-- Phase 5 (Research Platform) complete.
+- Phase 5 (Research Execution) complete — the two-month historical
+  validation run has produced evidence bundles and a human has
+  reviewed the resulting `PromotionEntry`.
 - Live broker integration exists but is isolated: no Phase 1-4
   module may import it, and no Phase 1-4 module may share
   credentials with it.

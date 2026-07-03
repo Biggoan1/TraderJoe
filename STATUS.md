@@ -6,15 +6,15 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: none (Phase 4 complete)
-- Last completed: Phase 4 End-to-End Learning System Validation (`t_phase4_validation`)
+- Current: Phase 5 Isolated Research Alpaca Client (`t_phase5_research_account_api`, Ready)
+- Last completed: Phase 5 Research Execution Technical Design (`t_phase5_plan`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Learning System e2e validation)
+- Commit: latest HEAD (Phase 5 planning)
 - Tags: v0.4.0 (Phase 1 baseline), v0.10.0-phase2 (Phase 2), v0.17.0-phase3 (Phase 3)
-- Status: Phase 4 complete — all seven Phase 4 cards Done
+- Status: Phase 4 complete; Phase 5 design complete; Isolated Research Alpaca Client ready to implement
 
 ## Testing
 - Tests passing: 919
@@ -37,8 +37,9 @@
 - TODOs: 12
 
 ## Phase
-- Current: 4 (Learning System) — complete
+- Current: 5 (Research Execution) — design complete, first implementation card ready
 - Phase 1: complete
 - Phase 2: complete (6/6 complete)
 - Phase 3: complete (7/7 complete)
 - Phase 4: complete (7/7 complete)
+- Phase 5: design complete (1/4 planning cards Done; 3 implementation cards queued)
