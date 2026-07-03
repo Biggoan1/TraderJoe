@@ -74,3 +74,50 @@ Hermes is not orchestrating this work item. Current repository snapshot:
 | `t_phase5_local_llm_research_assistant` | Phase 5: Local LLM Research Assistant | Phase 5 | Done |
 | `t_phase5_two_month_validation_run` | Phase 5: Two-Month Historical Validation | Phase 5 | Done |
 | `t_phase55_dashboard_plan` | Phase 5.5: Research & Learning Dashboard — Technical Design | Phase 5.5 | Backlog |
+| `t_90ca9e6f` | Phase 5.6 Planning: Historical Data Warehouse (`t_phase56_historical_warehouse`) | Phase 5.6 | Done |
+| `t_1c8a70da` | Phase 5.6: MarketDataProvider interface (`t_phase56_provider_interface`) | Phase 5.6 | Ready |
+| `t_b2a75ee8` | Phase 5.6: Local historical warehouse layout (`t_phase56_local_warehouse`) | Phase 5.6 | Ready |
+| `t_56f319a9` | Phase 5.6: Data catalog extension (`t_phase56_catalog`) | Phase 5.6 | Ready |
+| `t_6168af8e` | Phase 5.6: Parquet bar storage (`t_phase56_parquet_storage`) | Phase 5.6 | Ready |
+| `t_e9626fc3` | Phase 5.6: DuckDB query layer (`t_phase56_duckdb_queries`) | Phase 5.6 | Ready |
+| `t_c32b8416` | Phase 5.6: Dataset versioning + lineage (`t_phase56_data_versioning`) | Phase 5.6 | Ready |
+| `t_ababb2f7` | Phase 5.6: Warehouse integrity validation (`t_phase56_validation`) | Phase 5.6 | Ready |
+| `t_b06ec41d` | Phase 5.6: Gap detection reports (`t_phase56_gap_detection`) | Phase 5.6 | Ready |
+| `t_22210825` | Phase 5.6: Provider plugins (Alpaca + CSV + Parquet) (`t_phase56_provider_plugins`) | Phase 5.6 | Ready |
+| `t_31308fc2` | Phase 5.6: Import pipeline (`t_phase56_import_pipeline`) | Phase 5.6 | Ready |
+| `t_cf80bf36` | Phase 5.6: Incremental sync runner (`t_phase56_incremental_sync`) | Phase 5.6 | Ready |
+| `t_e6bf82a9` | Phase 5.6: Research cache + provider priority (`t_phase56_research_cache`) | Phase 5.6 | Ready |
+
+## Phase 5.6 — Implementation dependency chain
+
+```
+t_1c8a70da (provider_interface)
+     |
+     v
+t_b2a75ee8 (local_warehouse)
+     |
+     v
+t_56f319a9 (catalog) --------------+
+     |                             |
+     v                             v
+t_6168af8e (parquet_storage)   t_c32b8416 (data_versioning)
+     |                             |
+     +--> t_e9626fc3 (duckdb)      |
+     |                             |
+     +--> t_ababb2f7 (validation)  |
+              |                    |
+              v                    |
+        t_b06ec41d (gap_detection) |
+                                   |
+t_1c8a70da --> t_22210825 (provider_plugins)
+                     |
+                     v
+              t_31308fc2 (import_pipeline)
+                     |
+                     v
+              t_cf80bf36 (incremental_sync)
+
+t_e6bf82a9 (research_cache) <-- t_c32b8416 + t_56f319a9 + t_e9626fc3
+```
+
+Design deliverable: [`docs/architecture/phase-5-6-historical-warehouse.md`](docs/architecture/phase-5-6-historical-warehouse.md).

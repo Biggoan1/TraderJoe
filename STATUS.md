@@ -37,10 +37,12 @@
 - TODOs: 12
 
 ## Phase
-- Current: 5 (Research Execution) — design complete, first implementation card ready
+- Current: 5.6 (Historical Data Warehouse) — planning complete, 12 implementation cards ready
 - Phase 1: complete
 - Phase 2: complete (6/6 complete)
 - Phase 3: complete (7/7 complete)
 - Phase 4: complete (7/7 complete)
 - Phase 5: complete (4/4 complete)
+- Phase 5 follow-ups: `t_phase5_rs_live_feed` (76637cc) and `t_phase5_champion_explanations` (b806e9f, f1d1658, f46a548) — in Review
 - Phase 5.5 (planned): Research & Learning Dashboard — 1 planning card in Backlog
+- Phase 5.6 (planned): Historical Data Warehouse — planning card `t_90ca9e6f` Done (727ce8d); 12 implementation cards Ready. Non-blocking for v1.0. Storage architecture: DuckDB + Parquet + SQLite (hybrid). Design doc: `docs/architecture/phase-5-6-historical-warehouse.md`.
