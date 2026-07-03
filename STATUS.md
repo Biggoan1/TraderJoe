@@ -1,23 +1,23 @@
 # Trader Joe — Status
 
 ## Version
-- Current: v0.10.0
+- Current: v0.11.0
 - Champion: v0.4.0
 - Challenger: none
 
 ## Sprint
-- Current: Phase 3 Backtest Lab (`t_phase3_backtest_lab`, Ready)
+- Current: Phase 3 Backtest Lab (`t_phase3_backtest_lab`, Review)
 - Last completed: 10
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Phase 3 architecture validation)
+- Commit: latest HEAD (Backtest Lab foundation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Phase 3 architecture validated; Backtest Lab ready
+- Status: Backtest Lab foundation implemented, awaiting validation
 
 ## Testing
-- Tests passing: 401
+- Tests passing: 428
 - Tests failing: 0
 - Last run: 2026-07-02
 

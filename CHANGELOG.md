@@ -4,6 +4,47 @@ Trader Joe release history.
 
 ---
 
+## v0.11.0 — Phase 3: Backtest Lab Foundation
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Commit:** this commit
+
+### Added
+- `strategy/backtest_lab.py` — Backtest Lab foundation data contracts
+- Deterministic `BacktestConfig` with stable hashing and validation
+- `BacktestRunMetadata`, `BacktestArtifactPaths`, and `BacktestRunManifest`
+  for reproducible run identity and artifact locations
+- `BacktestStrategyResult` and `BacktestReport` shells for future
+  Champion/Challenger result reporting
+- `BacktestEvent`, `DeterministicReplayClock`, `StrategyEvaluation`, and
+  `NoOpStrategyAdapter` fixtures for deterministic replay scaffolding
+- Stable JSON/hash helpers for deterministic experiment metadata
+- Empty report factory for future dry-run backtest workflows
+
+### Tests
+- `tests/test_backtest_lab.py` — 27 tests covering:
+  - Stable JSON and hash determinism
+  - Config serialization and validation errors
+  - Run metadata and timestamp-independent run ids
+  - Artifact path generation
+  - Manifest serialization and stable hashes
+  - Deterministic replay event ordering
+  - No-op strategy adapter evaluation
+  - Strategy result and report serialization
+  - Markdown report shell output
+  - Observational-only guarantees
+- 428 passing total (0 failures)
+
+### Notes
+- Foundation only — no historical replay engine yet
+- No Relative Strength Challenger implementation
+- No live brokerage calls, order placement, buy/sell logic, runner behavior, or feature flags changed
+- Card `t_phase3_backtest_lab` moved to Review for validation
+
+---
+
 ## v0.10.0 — Sprint 10: Market Breadth Analysis
 
 **Date:** 2026-07-02

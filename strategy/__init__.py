@@ -55,11 +55,33 @@ from strategy.market_breadth import (
     MarketBreadthReport,
     BreadthSymbolObservation,
 )
+from strategy.backtest_lab import (
+    BacktestArtifactPaths,
+    BacktestConfig,
+    BacktestEvent,
+    BacktestReport,
+    BacktestRunManifest,
+    BacktestRunMetadata,
+    BacktestStrategyResult,
+    DeterministicReplayClock,
+    NoOpStrategyAdapter,
+    StrategyEvaluation,
+)
 
 __all__ = [
     "FeatureFlags",
     "get_feature_flags",
     "reset_feature_flags",
+    "BacktestArtifactPaths",
+    "BacktestConfig",
+    "BacktestEvent",
+    "BacktestReport",
+    "BacktestRunManifest",
+    "BacktestRunMetadata",
+    "BacktestStrategyResult",
+    "DeterministicReplayClock",
+    "NoOpStrategyAdapter",
+    "StrategyEvaluation",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",

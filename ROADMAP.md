@@ -173,7 +173,7 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Done |
 | `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Done |
 | `t_phase3_plan` | Phase 3: Decision Engine Technical Design | Phase 3 | Done |
-| `t_phase3_backtest_lab` | Phase 3: Backtest Lab Foundation | Phase 3 | Ready |
+| `t_phase3_backtest_lab` | Phase 3: Backtest Lab Foundation | Phase 3 | Review |
 | `t_phase3_data_catalog` | Phase 3: Research Data Catalog | Phase 3 | Backlog |
 | `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Backlog |
 | `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Backlog |
@@ -395,10 +395,11 @@ enable behavior-changing feature flags unless its scope explicitly includes an
 approved production rollout.
 
 #### `t_phase3_backtest_lab` — Backtest Lab Foundation
-- **Status:** Ready
+- **Status:** Review
 - **Scope:** Build run manifests, deterministic replay skeleton, artifact paths, and no-op strategy adapter fixtures.
 - **Definition of Done:** Reproducible dry-run backtest creates manifest, deterministic event order, and empty report artifacts.
 - **Validation:** Unit tests for manifest hashing, replay ordering, config serialization, and no production side effects.
+- **Implementation note:** Foundation data contracts are implemented for deterministic config, run metadata, artifact paths, replay event ordering, no-op strategy adapter fixtures, strategy result shells, run manifests, and report serialization. Full historical replay is intentionally deferred.
 
 #### `t_phase3_data_catalog` — Research Data Catalog
 - **Status:** Backlog
