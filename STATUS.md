@@ -6,15 +6,15 @@
 - Challenger: none
 
 ## Sprint
-- Current: Phase 3 architecture (`t_phase3_plan`, Review)
+- Current: Phase 3 Backtest Lab (`t_phase3_backtest_lab`, Ready)
 - Last completed: 10
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Phase 3 architecture)
+- Commit: latest HEAD (Phase 3 architecture validation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Phase 2 complete; Phase 3 design ready for validation
+- Status: Phase 3 architecture validated; Backtest Lab ready
 
 ## Testing
 - Tests passing: 401
