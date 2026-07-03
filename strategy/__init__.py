@@ -193,6 +193,13 @@ from strategy.weight_recommender import (
     recommend_weights,
     recommendations_stable_hash,
 )
+from strategy.learning_reports import (
+    DEFAULT_LEARNING_REPORT_OUTPUT_DIR,
+    LEARNING_REPORT_KIND,
+    LearningReport,
+    LearningReportPaths,
+    render_learning_report,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -314,6 +321,11 @@ __all__ = [
     "envelope_for",
     "recommend_weights",
     "recommendations_stable_hash",
+    "DEFAULT_LEARNING_REPORT_OUTPUT_DIR",
+    "LEARNING_REPORT_KIND",
+    "LearningReport",
+    "LearningReportPaths",
+    "render_learning_report",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",

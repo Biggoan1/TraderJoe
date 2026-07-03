@@ -824,7 +824,7 @@ config.
   disabled; commit `a04d46d`.
 
 #### `t_phase4_learning_reports` — Learning Report Generation
-- **Status:** Ready
+- **Status:** Review
 - **Scope:** Aggregate `StatisticalFinding`, `PatternHypothesis`,
   `FeatureImportanceScore`, and `WeightRecommendation` records into a
   `LearningReport` bundle. Mirror the Phase 3 `ResearchReport` layout
@@ -834,6 +834,20 @@ config.
   `generated_at`; report id derived from source stable hash.
 - **Validation:** Snapshot tests for Markdown structure; JSON schema
   tests; determinism tests; idempotent write.
+- **Implementation note:** `strategy/learning_reports.py` adds
+  `LearningReport`, `LearningReportPaths`, and
+  `render_learning_report`.  `report_id` is derived from a
+  deterministic hash of the four source hashes
+  (`findings_hash + hypotheses_hash + importance_hash +
+  recommendations_hash`).  `LearningReport.stable_hash` excludes
+  `generated_at`.  `write(output_dir)` persists four files under
+  `<output_dir>/<report_id>/`: `report.md`, `report.json`,
+  `recommendations.json`, `manifest.json`.  Default output tree is
+  `reports/learning/`.  Markdown renders sections for statistical
+  findings, pattern hypotheses, feature importance, weight
+  recommendations, optional recommendation envelopes, and a
+  reproducibility footer.  Never imports `strategy.config`; never
+  references any order-path module.
 
 #### `t_phase4_validation` — End-to-End Learning System Validation
 - **Status:** Backlog (depends on all five implementation cards)

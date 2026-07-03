@@ -6,18 +6,18 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 4 Learning Report Generation (`t_phase4_learning_reports`, Ready)
+- Current: Phase 4 Learning Report Generation (`t_phase4_learning_reports`, Review)
 - Last completed: Phase 4 Strategy Weight Recommender (`t_phase4_weight_recommender`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Weight recommender validation)
+- Commit: latest HEAD (Learning reports implementation)
 - Tags: v0.4.0 (Phase 1 baseline), v0.10.0-phase2 (Phase 2), v0.17.0-phase3 (Phase 3)
-- Status: Weight recommender validated; Learning Report Generation ready
+- Status: Learning reports implemented; awaiting Hermes validation
 
 ## Testing
-- Tests passing: 867
+- Tests passing: 893
 - Tests failing: 0
 - Last run: 2026-07-02
 

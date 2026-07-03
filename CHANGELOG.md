@@ -4,6 +4,76 @@ Trader Joe release history.
 
 ---
 
+## v0.22.0 — Phase 4: Learning Report Generation
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase4_learning_reports`
+
+### Added
+- `strategy/learning_reports.py` — aggregates Phase 4 analysis
+  records into a `LearningReport` bundle mirroring the Phase 3
+  `ResearchReport` layout
+- `LearningReport` dataclass with Markdown body, JSON payload,
+  flattened `recommendations` list, and reproducibility manifest;
+  `stable_hash` excludes `generated_at`
+- `LearningReportPaths` derives four artifact locations from
+  `output_dir + report_id`
+- `render_learning_report(findings, hypotheses, importance_scores,
+  recommendations, envelopes=None)`:
+  - `report_id` derived from the four source `stable_hash` values
+    (`findings_hash + hypotheses_hash + importance_hash +
+    recommendations_hash`)
+  - Payload carries summary counts + per-section label buckets +
+    every source record sorted deterministically
+  - Markdown renders sections for statistical findings, pattern
+    hypotheses, feature importance, weight recommendations, optional
+    recommendation envelopes, and a reproducibility footer
+- `write(output_dir)` persists four files under
+  `<output_dir>/<report_id>/`: `report.md`, `report.json`,
+  `recommendations.json`, `manifest.json`; parent dir created if
+  missing and write is idempotent
+- Default output tree: `reports/learning/`
+  (`DEFAULT_LEARNING_REPORT_OUTPUT_DIR`)
+
+### Tests
+- `tests/test_learning_reports.py` — 26 tests covering:
+  - `LearningReportPaths` derives all four artifact paths;
+    `DEFAULT_LEARNING_REPORT_OUTPUT_DIR` constant
+  - `render_learning_report`: `lr_` prefix; JSON schema (payload
+    kind, sections, summary keys, label buckets covering
+    `KNOWN_STATS_LABELS`); summary counts match inputs; Markdown
+    contains required sections; empty sections flagged with
+    "_No … supplied._" markers; custom title; default title
+    includes report id; envelopes included in payload + Markdown
+  - Determinism: `stable_hash` and `report_id` independent of
+    `generated_at`; repeat render byte-identical across
+    `to_json`, `to_markdown`, `recommendations_json`,
+    `manifest_json`; report id changes when findings or
+    recommendations change
+  - `write`: all four files persisted; landed under
+    `<output_dir>/<report_id>/`; idempotent; recommendations
+    persisted separately; manifest carries all four source hashes
+  - Empty inputs: bundle still valid; empty report id stable
+  - Observational-only: no `alpaca`, `place_order`, `submit_order`,
+    `TradingClient`, `api_key`, or `yfinance` references;
+    terminology check; module never mutates global feature flags;
+    never imports `strategy.config`; import-time exclusion of
+    `trader_cli`, `trader`, `crypto_trader`, `telegram_approvals`
+- 893 passing total (0 failures)
+
+### Notes
+- Module is behavior-neutral: production Champion path is unchanged;
+  runner, scheduler, Telegram, CLI, and plugin behavior untouched
+- No feature flags enabled; module never imports `strategy.config`
+- No broker credentials, HTTP calls, or historical validation paper
+  account wiring
+- Follow-up card remaining: `t_phase4_validation` (end-to-end
+  Learning System validation)
+
+---
+
 ## v0.21.0 — Phase 4: Strategy Weight Recommender
 
 **Date:** 2026-07-02
