@@ -4,6 +4,93 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Data catalog extension
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase56_catalog` (`t_56f319a9`)
+
+### Added
+- `strategy/data_catalog.py` — extended the existing Phase 3
+  catalog with Phase 5.6 warehouse-aware metadata and query
+  helpers.  Backward-compatible: legacy Phase 3 manifests round-
+  trip byte-identically through `to_dict` / `from_dict`, and
+  their `stable_hash` is unchanged.
+- `DatasetManifest` gains the Phase 5.6 field surface: `provider`,
+  `provider_request_id`, `interval` (validated against
+  `BarInterval`), `asset_class` (validated against `AssetClass`),
+  `adjustment_mode` (validated against `AdjustmentMode`),
+  `adjustment_version`, `corporate_action_version`, `timezone`,
+  `validation_status` (validated against
+  `strategy.local_warehouse.KNOWN_STATUSES`), `parent_dataset_id`
+  (for versioned datasets), `provider_capabilities_snapshot`,
+  `warehouse_paths`.  Every field defaults to empty and serializes
+  only when populated.
+- `DatasetManifest.covers_symbol(symbol)` and
+  `.covers_window(start, end)` — small predicates the coverage
+  queries share.
+- `DataCatalog.from_warehouse_layout(layout)` — construct a catalog
+  from a `WarehouseLayout` (uses the layout's `manifests_dir`).
+- `DataCatalog.find_coverage(symbol, interval, start, end)` —
+  returns manifests whose symbol coverage, interval, and declared
+  window overlap the query, sorted by `(start_date, dataset_id)`.
+- `DataCatalog.gaps(symbol, interval, start, end)` — returns the
+  uncovered sub-ranges within `[start, end]` as
+  `[(gap_start, gap_end), …]`.  Rejects empty bounds and reversed
+  ranges.  Day-level granularity (intra-day gap detection is the
+  concern of `t_phase56_gap_detection`).
+- `DataCatalog.latest_validated(symbol, interval)` — the most
+  recent `validation_status='validated'` manifest covering a
+  symbol at an interval; ordered by `end_date` descending.
+  Ignores quarantined / unvalidated datasets.
+- `DataCatalog.versions(dataset_id)` — returns the full version
+  chain (the v1 root when present, plus every manifest whose
+  `parent_dataset_id` matches).  Ordered by
+  `corporate_action_version` (numeric ascending), with v1 root
+  first.
+- New enum-vocabulary constants exposed through
+  `market_data_provider` and `local_warehouse` are consulted for
+  invariant validation without duplicating enum bodies.
+
+### Read-only guarantees (unchanged from Phase 3)
+- No live-runner imports.
+- No order-path token references.
+- No provider plugin imports.
+- No yfinance / pandas.
+- No credential env-var reads.
+- No `ApprovalRecord` or `PromotionEntry` construction.
+- `FeatureFlags.all_disabled == True` after every query.
+
+### Testing
+- +40 new tests in `tests/test_data_catalog.py`
+  (`TestWarehouseFieldsDefaultToEmpty`, `TestWarehouseFieldsPopulated`,
+  `TestWarehouseFieldValidation`, `TestFindCoverage`, `TestGaps`,
+  `TestLatestValidated`, `TestVersions`, `TestFromWarehouseLayout`,
+  `TestWarehouseExtensionFeatureFlagInvariance`).
+- Existing 45 Phase 3 tests still pass (backward compat).
+- Total suite: **1559 passing** (was 1519; +40 net new).
+- Coverage: legacy roundtrip byte-identity, hash invariance under
+  the extension, warehouse field serialization, enum validation
+  rejects (interval / asset_class / adjustment_mode /
+  validation_status), parent-dataset invariants, coverage
+  matching + interval filter + benchmark symbols + sort order,
+  gap computation (no gap / full gap / interior gap / end gap /
+  start gap / overlap merging / bad bounds), latest_validated
+  ignores quarantined + filters by symbol/interval, version chain
+  ordering + missing root + invalid id rejection,
+  `from_warehouse_layout` roundtrip, feature-flag invariance.
+
+### Not in this card (deferred to subsequent Phase 5.6 cards)
+- Parquet writer / reader — `t_phase56_parquet_storage`.
+- DuckDB analytical query surface — `t_phase56_duckdb_queries`.
+- Provider plugin implementations — `t_phase56_provider_plugins`.
+- Intra-day / per-bar gap detection — `t_phase56_gap_detection`.
+- Dataset version lineage tracking beyond `parent_dataset_id` —
+  `t_phase56_data_versioning`.
+
+---
+
 ## Unreleased — Phase 5.6: Local historical warehouse layout
 
 **Date:** 2026-07-03

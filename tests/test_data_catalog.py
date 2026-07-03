@@ -603,3 +603,612 @@ class TestObservationalOnly:
 
         assert flags.all_disabled is True
         assert flags.enabled_flags == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.6 warehouse extension — t_phase56_catalog
+# ---------------------------------------------------------------------------
+
+
+from strategy.local_warehouse import (
+    STATUS_UNVALIDATED,
+    STATUS_VALIDATED,
+    WarehouseLayout,
+)
+from strategy.market_data_provider import (
+    AdjustmentMode,
+    AssetClass,
+    BarInterval,
+)
+
+
+def _wh_file(name: str = "a.csv") -> DatasetFile:
+    return DatasetFile(path=name, sha256="0" * 64, size_bytes=1)
+
+
+def _mkm(**over) -> DatasetManifest:
+    base = dict(
+        dataset_id="dataset-a",
+        kind=HISTORICAL_BARS,
+        files=(_wh_file(),),
+    )
+    base.update(over)
+    return DatasetManifest(**base)
+
+
+class TestWarehouseFieldsDefaultToEmpty:
+    """A manifest constructed with only the Phase 3 fields must round-trip
+    byte-identically through ``to_dict`` / ``from_dict``.  The warehouse
+    fields are emitted only when populated.
+    """
+
+    def test_legacy_manifest_to_dict_omits_warehouse_fields(self):
+        m = _mkm(symbols=("AAPL",))
+        d = m.to_dict()
+        for key in (
+            "provider",
+            "provider_request_id",
+            "interval",
+            "asset_class",
+            "adjustment_mode",
+            "adjustment_version",
+            "corporate_action_version",
+            "timezone",
+            "validation_status",
+            "parent_dataset_id",
+            "provider_capabilities_snapshot",
+            "warehouse_paths",
+        ):
+            assert key not in d, (
+                f"legacy manifest must not emit {key!r}"
+            )
+
+    def test_legacy_manifest_stable_hash_unaffected(self):
+        # Two manifests differing only in fields the warehouse
+        # extension added — but neither populates them.  Their
+        # stable hashes must be equal to prove the extension didn't
+        # inflate the hashable payload.
+        a = _mkm(symbols=("AAPL",), imported_at="2026-01-01")
+        b = _mkm(symbols=("AAPL",), imported_at="2026-02-01")
+        assert a.stable_hash() == b.stable_hash()
+
+    def test_legacy_roundtrip_byte_identical(self):
+        m = _mkm(
+            symbols=("AAPL",),
+            start_date="2020-01-01",
+            end_date="2020-12-31",
+        )
+        d = m.to_dict()
+        restored = DatasetManifest.from_dict(d)
+        assert restored == m
+        assert restored.to_dict() == d
+
+
+class TestWarehouseFieldsPopulated:
+    def test_all_warehouse_fields_serialize_when_populated(self):
+        m = _mkm(
+            symbols=("AAPL",),
+            start_date="2015-01-02",
+            end_date="2026-07-14",
+            provider="fake",
+            provider_request_id="trace-xyz",
+            interval=BarInterval.DAILY.value,
+            asset_class=AssetClass.EQUITY.value,
+            adjustment_mode=AdjustmentMode.SPLIT_DIVIDEND.value,
+            adjustment_version="fake:2026-07-15",
+            corporate_action_version="3",
+            timezone="America/New_York",
+            validation_status=STATUS_VALIDATED,
+            provider_capabilities_snapshot={
+                "supported_intervals": ["1Day"]
+            },
+            warehouse_paths={"dataset_dir": "equities/daily/aapl"},
+        )
+        d = m.to_dict()
+        assert d["provider"] == "fake"
+        assert d["provider_request_id"] == "trace-xyz"
+        assert d["interval"] == "1Day"
+        assert d["asset_class"] == "equity"
+        assert d["adjustment_mode"] == "split_dividend"
+        assert d["adjustment_version"] == "fake:2026-07-15"
+        assert d["corporate_action_version"] == "3"
+        assert d["timezone"] == "America/New_York"
+        assert d["validation_status"] == STATUS_VALIDATED
+        assert d["provider_capabilities_snapshot"] == {
+            "supported_intervals": ["1Day"]
+        }
+        assert d["warehouse_paths"] == {"dataset_dir": "equities/daily/aapl"}
+
+    def test_warehouse_manifest_roundtrip(self):
+        m = _mkm(
+            symbols=("AAPL",),
+            provider="fake",
+            interval=BarInterval.HOURLY.value,
+            asset_class=AssetClass.ETF.value,
+            adjustment_mode=AdjustmentMode.RAW.value,
+            validation_status=STATUS_UNVALIDATED,
+            parent_dataset_id="aapl-root",
+            corporate_action_version="2",
+        )
+        restored = DatasetManifest.from_dict(m.to_dict())
+        assert restored == m
+
+    def test_stable_hash_reflects_warehouse_content(self):
+        a = _mkm(symbols=("AAPL",), provider="one")
+        b = _mkm(symbols=("AAPL",), provider="two")
+        assert a.stable_hash() != b.stable_hash()
+
+    def test_covers_symbol_and_covers_window(self):
+        m = _mkm(
+            symbols=("AAPL",),
+            benchmarks=("SPY",),
+            start_date="2020-01-01",
+            end_date="2020-12-31",
+        )
+        assert m.covers_symbol("AAPL") is True
+        assert m.covers_symbol("SPY") is True
+        assert m.covers_symbol("NVDA") is False
+        assert m.covers_window("2020-06-01", "2020-06-30") is True
+        assert m.covers_window("2019-01-01", "2019-12-31") is False
+        assert m.covers_window("2021-01-01", "2021-12-31") is False
+        # Empty declared bounds -> open-ended
+        m2 = _mkm(symbols=("AAPL",))
+        assert m2.covers_window("2020-01-01", "2020-12-31") is True
+
+
+class TestWarehouseFieldValidation:
+    @pytest.mark.parametrize(
+        "override,match",
+        [
+            ({"interval": "bogus"}, "interval"),
+            ({"asset_class": "bogus"}, "asset_class"),
+            ({"adjustment_mode": "bogus"}, "adjustment_mode"),
+            ({"validation_status": "bogus"}, "validation_status"),
+        ],
+    )
+    def test_unknown_enum_value_rejected(self, override, match):
+        with pytest.raises(ValueError, match=match):
+            _mkm(symbols=("AAPL",), **override)
+
+    def test_parent_dataset_id_pattern_enforced(self):
+        with pytest.raises(ValueError, match="dataset_id"):
+            _mkm(symbols=("AAPL",), parent_dataset_id="Bad Parent!")
+
+    def test_parent_cannot_equal_own_id(self):
+        with pytest.raises(ValueError, match="parent_dataset_id"):
+            _mkm(
+                dataset_id="aapl",
+                symbols=("AAPL",),
+                parent_dataset_id="aapl",
+            )
+
+    def test_empty_warehouse_fields_are_valid(self):
+        # Legacy path — every warehouse field left empty.  Must not raise.
+        _mkm(symbols=("AAPL",))
+
+
+# ---------------------------------------------------------------------------
+# Query helpers
+# ---------------------------------------------------------------------------
+
+
+def _seed_catalog(**variants) -> DataCatalog:
+    """Build a DataCatalog from a dict of manifest overrides."""
+    manifests = {}
+    for dataset_id, over in variants.items():
+        payload = dict(over)
+        payload.setdefault("kind", HISTORICAL_BARS)
+        payload.setdefault("files", (_wh_file(f"{dataset_id}.csv"),))
+        payload["dataset_id"] = dataset_id
+        manifests[dataset_id] = DatasetManifest(**payload)
+    return DataCatalog(root=".", manifests=manifests)
+
+
+class TestFindCoverage:
+    def test_matches_symbol_interval_window(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-2020": dict(
+                    symbols=("AAPL",),
+                    start_date="2020-01-01",
+                    end_date="2020-12-31",
+                    interval="1Day",
+                ),
+                "msft-2020": dict(
+                    symbols=("MSFT",),
+                    start_date="2020-01-01",
+                    end_date="2020-12-31",
+                    interval="1Day",
+                ),
+            }
+        )
+        hits = catalog.find_coverage(
+            "AAPL", "1Day", "2020-06-01", "2020-06-30"
+        )
+        assert [m.dataset_id for m in hits] == ["aapl-2020"]
+
+    def test_matches_benchmark_symbol(self):
+        catalog = _seed_catalog(
+            **{
+                "spy-2020": dict(
+                    benchmarks=("SPY",),
+                    start_date="2020-01-01",
+                    end_date="2020-12-31",
+                    interval="1Day",
+                ),
+            }
+        )
+        hits = catalog.find_coverage(
+            "SPY", "1Day", "2020-06-01", "2020-06-30"
+        )
+        assert [m.dataset_id for m in hits] == ["spy-2020"]
+
+    def test_interval_mismatch_excludes(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-daily": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2020-01-01", end_date="2020-12-31",
+                ),
+                "aapl-hourly": dict(
+                    symbols=("AAPL",), interval="1Hour",
+                    start_date="2020-01-01", end_date="2020-12-31",
+                ),
+            }
+        )
+        hits = catalog.find_coverage(
+            "AAPL", "1Hour", "2020-01-01", "2020-12-31"
+        )
+        assert [m.dataset_id for m in hits] == ["aapl-hourly"]
+
+    def test_non_overlapping_window_excluded(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-2020": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2020-01-01", end_date="2020-12-31",
+                ),
+            }
+        )
+        hits = catalog.find_coverage(
+            "AAPL", "1Day", "2022-01-01", "2022-12-31"
+        )
+        assert hits == []
+
+    def test_sorted_by_start_then_dataset_id(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-b-2020": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2020-01-01", end_date="2020-06-30",
+                ),
+                "aapl-a-2020": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2020-01-01", end_date="2020-06-30",
+                ),
+                "aapl-2021": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2021-01-01", end_date="2021-06-30",
+                ),
+            }
+        )
+        hits = catalog.find_coverage(
+            "AAPL", "1Day", "2020-01-01", "2021-12-31"
+        )
+        assert [m.dataset_id for m in hits] == [
+            "aapl-a-2020",
+            "aapl-b-2020",
+            "aapl-2021",
+        ]
+
+
+class TestGaps:
+    def _catalog_with(self, windows: list[tuple[str, str, str]]) -> DataCatalog:
+        variants = {
+            f"aapl-{i}": dict(
+                symbols=("AAPL",), interval="1Day",
+                start_date=start, end_date=end,
+            )
+            for i, (dataset_id, start, end) in enumerate(windows)
+        }
+        return _seed_catalog(**variants)
+
+    def test_no_gap_when_fully_covered(self):
+        catalog = self._catalog_with(
+            [("m1", "2020-01-01", "2020-12-31")]
+        )
+        assert catalog.gaps(
+            "AAPL", "1Day", "2020-06-01", "2020-06-30"
+        ) == []
+
+    def test_full_gap_when_no_coverage(self):
+        catalog = self._catalog_with([])
+        assert catalog.gaps(
+            "AAPL", "1Day", "2020-01-01", "2020-12-31"
+        ) == [("2020-01-01", "2020-12-31")]
+
+    def test_gap_between_two_windows(self):
+        catalog = self._catalog_with(
+            [
+                ("a", "2020-01-01", "2020-06-30"),
+                ("b", "2020-09-01", "2020-12-31"),
+            ]
+        )
+        gaps = catalog.gaps(
+            "AAPL", "1Day", "2020-01-01", "2020-12-31"
+        )
+        assert gaps == [("2020-06-30", "2020-09-01")]
+
+    def test_gap_at_end_of_range(self):
+        catalog = self._catalog_with(
+            [("a", "2020-01-01", "2020-06-30")]
+        )
+        assert catalog.gaps(
+            "AAPL", "1Day", "2020-01-01", "2020-12-31"
+        ) == [("2020-06-30", "2020-12-31")]
+
+    def test_gap_at_start_of_range(self):
+        catalog = self._catalog_with(
+            [("a", "2020-06-01", "2020-12-31")]
+        )
+        assert catalog.gaps(
+            "AAPL", "1Day", "2020-01-01", "2020-12-31"
+        ) == [("2020-01-01", "2020-06-01")]
+
+    def test_overlapping_windows_merged(self):
+        catalog = self._catalog_with(
+            [
+                ("a", "2020-01-01", "2020-08-31"),
+                ("b", "2020-06-01", "2020-12-31"),
+            ]
+        )
+        # Fully covered — no gaps
+        assert catalog.gaps(
+            "AAPL", "1Day", "2020-02-01", "2020-11-30"
+        ) == []
+
+    def test_gaps_requires_explicit_bounds(self):
+        catalog = self._catalog_with([])
+        with pytest.raises(ValueError, match="bounds"):
+            catalog.gaps("AAPL", "1Day", "", "2020-12-31")
+        with pytest.raises(ValueError, match="bounds"):
+            catalog.gaps("AAPL", "1Day", "2020-01-01", "")
+
+    def test_gaps_rejects_reversed_range(self):
+        catalog = self._catalog_with([])
+        with pytest.raises(ValueError, match="start"):
+            catalog.gaps(
+                "AAPL", "1Day", "2020-12-31", "2020-01-01"
+            )
+
+
+class TestLatestValidated:
+    def test_returns_none_when_no_validated_dataset(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-2020": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2020-01-01", end_date="2020-12-31",
+                    validation_status=STATUS_UNVALIDATED,
+                ),
+            }
+        )
+        assert catalog.latest_validated("AAPL", "1Day") is None
+
+    def test_returns_the_latest_validated_by_end_date(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-2020": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2020-01-01", end_date="2020-12-31",
+                    validation_status=STATUS_VALIDATED,
+                ),
+                "aapl-2021": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2021-01-01", end_date="2021-12-31",
+                    validation_status=STATUS_VALIDATED,
+                ),
+            }
+        )
+        latest = catalog.latest_validated("AAPL", "1Day")
+        assert latest is not None
+        assert latest.dataset_id == "aapl-2021"
+
+    def test_filters_by_interval(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-hourly": dict(
+                    symbols=("AAPL",), interval="1Hour",
+                    start_date="2020-01-01", end_date="2020-12-31",
+                    validation_status=STATUS_VALIDATED,
+                ),
+                "aapl-daily": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2020-01-01", end_date="2020-06-30",
+                    validation_status=STATUS_VALIDATED,
+                ),
+            }
+        )
+        assert (
+            catalog.latest_validated("AAPL", "1Day").dataset_id
+            == "aapl-daily"
+        )
+        assert (
+            catalog.latest_validated("AAPL", "1Hour").dataset_id
+            == "aapl-hourly"
+        )
+
+    def test_filters_by_symbol(self):
+        catalog = _seed_catalog(
+            **{
+                "msft-2020": dict(
+                    symbols=("MSFT",), interval="1Day",
+                    start_date="2020-01-01", end_date="2020-12-31",
+                    validation_status=STATUS_VALIDATED,
+                ),
+            }
+        )
+        assert catalog.latest_validated("AAPL", "1Day") is None
+
+    def test_ignores_quarantined_datasets(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-good": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2020-01-01", end_date="2020-06-30",
+                    validation_status=STATUS_VALIDATED,
+                ),
+                "aapl-bad": dict(
+                    symbols=("AAPL",), interval="1Day",
+                    start_date="2020-07-01", end_date="2020-12-31",
+                    validation_status="quarantined",
+                ),
+            }
+        )
+        latest = catalog.latest_validated("AAPL", "1Day")
+        assert latest is not None
+        assert latest.dataset_id == "aapl-good"
+
+
+class TestVersions:
+    def test_versions_returns_root_alone_when_no_children(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-2020": dict(
+                    symbols=("AAPL",),
+                    corporate_action_version="1",
+                ),
+            }
+        )
+        chain = catalog.versions("aapl-2020")
+        assert [m.dataset_id for m in chain] == ["aapl-2020"]
+
+    def test_versions_returns_chain_ordered_by_version(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-2020": dict(
+                    symbols=("AAPL",),
+                    corporate_action_version="1",
+                ),
+                "aapl-2020-v3": dict(
+                    symbols=("AAPL",),
+                    parent_dataset_id="aapl-2020",
+                    corporate_action_version="3",
+                ),
+                "aapl-2020-v2": dict(
+                    symbols=("AAPL",),
+                    parent_dataset_id="aapl-2020",
+                    corporate_action_version="2",
+                ),
+            }
+        )
+        chain = catalog.versions("aapl-2020")
+        assert [m.dataset_id for m in chain] == [
+            "aapl-2020",
+            "aapl-2020-v2",
+            "aapl-2020-v3",
+        ]
+
+    def test_versions_empty_when_nothing_matches(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-2020": dict(
+                    symbols=("AAPL",),
+                    corporate_action_version="1",
+                ),
+            }
+        )
+        assert catalog.versions("no-such-id") == []
+
+    def test_versions_returns_children_even_when_root_missing(self):
+        # A revision whose parent is not in the catalog is still
+        # discoverable through the children lookup.
+        catalog = _seed_catalog(
+            **{
+                "aapl-2020-v2": dict(
+                    symbols=("AAPL",),
+                    parent_dataset_id="aapl-2020",
+                    corporate_action_version="2",
+                ),
+            }
+        )
+        chain = catalog.versions("aapl-2020")
+        assert [m.dataset_id for m in chain] == ["aapl-2020-v2"]
+
+    def test_versions_rejects_invalid_dataset_id(self):
+        catalog = _seed_catalog(
+            **{
+                "aapl-2020": dict(
+                    symbols=("AAPL",),
+                ),
+            }
+        )
+        with pytest.raises(ValueError, match="dataset_id"):
+            catalog.versions("Bad Id!")
+
+
+# ---------------------------------------------------------------------------
+# from_warehouse_layout
+# ---------------------------------------------------------------------------
+
+
+class TestFromWarehouseLayout:
+    def test_reads_manifests_from_warehouse_layout(self, tmp_path):
+        layout = WarehouseLayout(root=tmp_path / "warehouse")
+        layout.create()
+        manifest = _mkm(
+            dataset_id="aapl-2020",
+            symbols=("AAPL",),
+            start_date="2020-01-01",
+            end_date="2020-12-31",
+            provider="fake",
+            interval="1Day",
+            asset_class="equity",
+            adjustment_mode="split_dividend",
+            validation_status=STATUS_VALIDATED,
+        )
+        (layout.manifests_dir / f"{manifest.dataset_id}.json").write_text(
+            manifest.to_json(),
+            encoding="utf-8",
+        )
+        catalog = DataCatalog.from_warehouse_layout(layout)
+        assert catalog.has("aapl-2020")
+        loaded = catalog.get("aapl-2020")
+        assert loaded.provider == "fake"
+        assert loaded.validation_status == STATUS_VALIDATED
+
+    def test_empty_warehouse_layout_yields_empty_catalog(self, tmp_path):
+        layout = WarehouseLayout(root=tmp_path / "warehouse")
+        layout.create()
+        catalog = DataCatalog.from_warehouse_layout(layout)
+        assert catalog.list() == []
+
+
+# ---------------------------------------------------------------------------
+# Feature-flag invariance for the new surface
+# ---------------------------------------------------------------------------
+
+
+class TestWarehouseExtensionFeatureFlagInvariance:
+    def test_flags_stay_disabled_after_queries(self, tmp_path):
+        flags = reset_feature_flags()
+        layout = WarehouseLayout(root=tmp_path / "warehouse")
+        layout.create()
+        m = _mkm(
+            dataset_id="aapl",
+            symbols=("AAPL",),
+            start_date="2020-01-01",
+            end_date="2020-12-31",
+            interval="1Day",
+            validation_status=STATUS_VALIDATED,
+        )
+        (layout.manifests_dir / "aapl.json").write_text(
+            m.to_json(), encoding="utf-8"
+        )
+        catalog = DataCatalog.from_warehouse_layout(layout)
+        catalog.find_coverage("AAPL", "1Day", "2020-01-01", "2020-12-31")
+        catalog.gaps("AAPL", "1Day", "2020-01-01", "2020-12-31")
+        catalog.latest_validated("AAPL", "1Day")
+        catalog.versions("aapl")
+        assert flags.all_disabled is True
+        assert flags.enabled_flags == []

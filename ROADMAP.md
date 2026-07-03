@@ -1567,6 +1567,7 @@ reversible, read-only:
   enforcement, `WarehouseIntegrityError`. **Done** (`t_b2a75ee8`;
   `strategy/local_warehouse.py`; +65 tests; commit `c2173c9`).
 - `t_phase56_catalog` — extension of `strategy/data_catalog.py`.
+  **In Review** (`t_56f319a9`; +40 tests; commit pending).
 - `t_phase56_parquet_storage` — bar writer/reader in canonical
   schema, Zstd config.
 - `t_phase56_duckdb_queries` — DuckDB query layer joining

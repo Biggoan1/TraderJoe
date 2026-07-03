@@ -1,6 +1,7 @@
 """Research Data Catalog.
 
-Read-only registry of research datasets used by the Backtest Lab.
+Read-only registry of research datasets used by the Backtest Lab and
+the Phase 5.6 Historical Data Warehouse.
 
 The catalog does not fetch data, download files, mutate manifests, place
 orders, call broker APIs, or enable feature flags. It only lists,
@@ -9,9 +10,20 @@ walk-forward runs can be reproduced from immutable inputs.
 
 Storage layout:
 
-    research_data/
+    research_data/                     -- Phase 3 root
         manifests/<dataset_id>.json    -- immutable dataset manifests
         <dataset_id>/*                 -- referenced data files
+
+    market_data/                       -- Phase 5.6 warehouse root
+        equities/{daily,hourly,minute}/
+        crypto/  options/
+        metadata/  manifests/  versions/
+
+The same ``DatasetManifest`` shape backs both trees.  Phase 5.6
+manifests carry a superset of the Phase 3 fields — see the
+"Phase 5.6 warehouse extension" fields on :class:`DatasetManifest`.
+Legacy Phase 3 manifests are byte-identical after round-trip: the
+new fields serialize only when they carry non-default content.
 
 Manifest kinds (see ``KNOWN_DATASET_KINDS``):
 
@@ -20,7 +32,7 @@ Manifest kinds (see ``KNOWN_DATASET_KINDS``):
     paper_log          -- exports of paper-trading logs
     research_context   -- watchlists, digest exports, sector/breadth snapshots
 
-Example:
+Example — legacy path:
 
     from strategy.data_catalog import DataCatalog
 
@@ -28,6 +40,26 @@ Example:
     for dataset in catalog.list(kind="historical_bars"):
         result = catalog.validate(dataset.dataset_id)
         assert result.ok
+
+Example — warehouse path:
+
+    from strategy.data_catalog import DataCatalog
+    from strategy.local_warehouse import WarehouseLayout
+
+    layout = WarehouseLayout.from_env()
+    catalog = DataCatalog.from_warehouse_layout(layout)
+    hits = catalog.find_coverage("AAPL", "1Day", "2015-01-02", "2026-07-14")
+    latest = catalog.latest_validated("AAPL", "1Day")
+
+Read-only guarantees (unchanged from Phase 3):
+
+* Never places, submits, cancels, or replaces orders.
+* Never imports ``trader``, ``crypto_trader``, ``trader_cli``,
+  ``telegram_approvals``, or ``strategy.runner``.
+* Never mutates :class:`~strategy.config.FeatureFlags`.
+* Never constructs an ``ApprovalRecord``.
+* Never advances ``PromotionEntry`` state.
+* Never writes to a dataset file or its manifest.
 """
 
 from __future__ import annotations
@@ -41,6 +73,16 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from strategy.backtest_lab import stable_hash
+from strategy.local_warehouse import (
+    KNOWN_STATUSES as WAREHOUSE_STATUSES,
+    STATUS_VALIDATED as WAREHOUSE_STATUS_VALIDATED,
+    WarehouseLayout,
+)
+from strategy.market_data_provider import (
+    AdjustmentMode,
+    AssetClass,
+    BarInterval,
+)
 
 
 DEFAULT_CATALOG_ROOT = "research_data"
@@ -58,6 +100,13 @@ KNOWN_DATASET_KINDS: Tuple[str, ...] = (
     PAPER_LOG,
     RESEARCH_CONTEXT,
 )
+
+# Vocabularies borrowed from strategy.market_data_provider so the
+# catalog can validate values without duplicating the enum bodies.
+_KNOWN_INTERVALS: frozenset = frozenset(i.value for i in BarInterval)
+_KNOWN_ASSET_CLASSES: frozenset = frozenset(c.value for c in AssetClass)
+_KNOWN_ADJUSTMENT_MODES: frozenset = frozenset(a.value for a in AdjustmentMode)
+_KNOWN_VALIDATION_STATUSES: frozenset = frozenset(WAREHOUSE_STATUSES)
 
 _DATASET_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_\-.]{1,63}$")
 _HEX64_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -91,6 +140,25 @@ def _validate_dataset_id(dataset_id: str) -> None:
 def _validate_sha256(sha256: str) -> None:
     if not sha256 or not _HEX64_PATTERN.match(sha256):
         raise ValueError(f"sha256 must be a 64-character hex digest (got {sha256!r})")
+
+
+def _version_sort_key(manifest: "DatasetManifest") -> Tuple[int, int, str, str]:
+    """Sort key for the version chain of a dataset.
+
+    Priority order:
+
+    1. v1 root before any child (roots have ``parent_dataset_id == ''``).
+    2. ``corporate_action_version`` parsed as int when possible.
+    3. Same string lexical fallback when not int-parseable.
+    4. ``dataset_id`` lexical tiebreaker.
+    """
+    is_root = 0 if not manifest.parent_dataset_id else 1
+    version_str = manifest.corporate_action_version or ""
+    try:
+        version_int = int(version_str)
+    except (TypeError, ValueError):
+        version_int = 0
+    return (is_root, version_int, version_str, manifest.dataset_id)
 
 
 def _read_csv_header(path: Path) -> List[str]:
@@ -163,7 +231,21 @@ class DatasetFile:
 
 @dataclass(frozen=True)
 class DatasetManifest:
-    """Immutable description of a research dataset."""
+    """Immutable description of a research dataset.
+
+    Phase 3 fields describe the dataset shape and provenance for
+    Backtest Lab reruns.  Phase 5.6 warehouse fields (``provider``,
+    ``interval``, ``asset_class``, ``adjustment_mode``,
+    ``adjustment_version``, ``corporate_action_version``,
+    ``timezone``, ``validation_status``, ``parent_dataset_id``,
+    ``provider_request_id``, ``provider_capabilities_snapshot``,
+    ``warehouse_paths``) describe how the dataset was acquired from a
+    market-data provider and its position in the warehouse's
+    versioning chain.  All Phase 5.6 fields default to empty and
+    serialize only when populated, so legacy Phase 3 manifests round-
+    trip through :meth:`to_dict` / :meth:`from_dict` byte-identically
+    and their :meth:`stable_hash` is unchanged.
+    """
 
     dataset_id: str
     kind: str
@@ -178,6 +260,22 @@ class DatasetManifest:
     files: Tuple[DatasetFile, ...] = ()
     notes: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # ----- Phase 5.6 warehouse extension (all optional) -----------------
+    provider: str = ""
+    provider_request_id: str = ""
+    interval: str = ""
+    asset_class: str = ""
+    adjustment_mode: str = ""
+    adjustment_version: str = ""
+    corporate_action_version: str = ""
+    timezone: str = ""
+    validation_status: str = ""
+    parent_dataset_id: str = ""
+    provider_capabilities_snapshot: Dict[str, Any] = field(
+        default_factory=dict
+    )
+    warehouse_paths: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "symbols", tuple(self.symbols))
@@ -200,9 +298,45 @@ class DatasetManifest:
             if entry.path in seen:
                 raise ValueError(f"duplicate file path in manifest: {entry.path}")
             seen.add(entry.path)
+        # Phase 5.6 warehouse field invariants — enforced only when
+        # the field is populated so legacy manifests round-trip.
+        if self.interval and self.interval not in _KNOWN_INTERVALS:
+            raise ValueError(
+                f"interval must be one of {sorted(_KNOWN_INTERVALS)} "
+                f"(got {self.interval!r})"
+            )
+        if self.asset_class and self.asset_class not in _KNOWN_ASSET_CLASSES:
+            raise ValueError(
+                f"asset_class must be one of {sorted(_KNOWN_ASSET_CLASSES)} "
+                f"(got {self.asset_class!r})"
+            )
+        if (
+            self.adjustment_mode
+            and self.adjustment_mode not in _KNOWN_ADJUSTMENT_MODES
+        ):
+            raise ValueError(
+                f"adjustment_mode must be one of "
+                f"{sorted(_KNOWN_ADJUSTMENT_MODES)} "
+                f"(got {self.adjustment_mode!r})"
+            )
+        if (
+            self.validation_status
+            and self.validation_status not in _KNOWN_VALIDATION_STATUSES
+        ):
+            raise ValueError(
+                f"validation_status must be one of "
+                f"{sorted(_KNOWN_VALIDATION_STATUSES)} "
+                f"(got {self.validation_status!r})"
+            )
+        if self.parent_dataset_id:
+            _validate_dataset_id(self.parent_dataset_id)
+            if self.parent_dataset_id == self.dataset_id:
+                raise ValueError(
+                    "parent_dataset_id cannot equal dataset_id"
+                )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload: Dict[str, Any] = {
             "dataset_id": self.dataset_id,
             "kind": self.kind,
             "description": self.description,
@@ -217,6 +351,30 @@ class DatasetManifest:
             "notes": self.notes,
             "metadata": dict(self.metadata),
         }
+        # Warehouse fields serialize only when populated so legacy
+        # manifests round-trip byte-identically through the catalog.
+        for name in (
+            "provider",
+            "provider_request_id",
+            "interval",
+            "asset_class",
+            "adjustment_mode",
+            "adjustment_version",
+            "corporate_action_version",
+            "timezone",
+            "validation_status",
+            "parent_dataset_id",
+        ):
+            value = getattr(self, name)
+            if value:
+                payload[name] = value
+        if self.provider_capabilities_snapshot:
+            payload["provider_capabilities_snapshot"] = dict(
+                self.provider_capabilities_snapshot
+            )
+        if self.warehouse_paths:
+            payload["warehouse_paths"] = dict(self.warehouse_paths)
+        return payload
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "DatasetManifest":
@@ -236,6 +394,20 @@ class DatasetManifest:
             ),
             notes=data.get("notes", ""),
             metadata=dict(data.get("metadata") or {}),
+            provider=data.get("provider", ""),
+            provider_request_id=data.get("provider_request_id", ""),
+            interval=data.get("interval", ""),
+            asset_class=data.get("asset_class", ""),
+            adjustment_mode=data.get("adjustment_mode", ""),
+            adjustment_version=data.get("adjustment_version", ""),
+            corporate_action_version=data.get("corporate_action_version", ""),
+            timezone=data.get("timezone", ""),
+            validation_status=data.get("validation_status", ""),
+            parent_dataset_id=data.get("parent_dataset_id", ""),
+            provider_capabilities_snapshot=dict(
+                data.get("provider_capabilities_snapshot") or {}
+            ),
+            warehouse_paths=dict(data.get("warehouse_paths") or {}),
         )
 
     def to_json(self, indent: int = 2) -> str:
@@ -246,6 +418,28 @@ class DatasetManifest:
         data = self.to_dict()
         data.pop("imported_at", None)
         return stable_hash(data)
+
+    # ------------------------------------------------------------------
+    # Warehouse coverage helpers
+    # ------------------------------------------------------------------
+
+    def covers_symbol(self, symbol: str) -> bool:
+        """True when the manifest lists ``symbol`` among its symbols
+        or benchmarks.
+        """
+        return symbol in self.symbols or symbol in self.benchmarks
+
+    def covers_window(self, start: str, end: str) -> bool:
+        """True when the manifest's ``[start_date, end_date]`` window
+        overlaps ``[start, end]``.  Empty declared dates are treated
+        as ``-inf`` / ``+inf`` so partially-declared manifests still
+        match a query.
+        """
+        if self.start_date and end and self.start_date > end:
+            return False
+        if self.end_date and start and self.end_date < start:
+            return False
+        return True
 
 
 @dataclass
@@ -330,6 +524,23 @@ class DataCatalog:
             manifests_dir=str(manifests_path),
         )
 
+    @classmethod
+    def from_warehouse_layout(
+        cls, layout: WarehouseLayout
+    ) -> "DataCatalog":
+        """Load a catalog from a Phase 5.6 warehouse layout.
+
+        Thin wrapper around :meth:`from_directory` that reads
+        manifests from ``layout.manifests_dir``.  Callers that don't
+        need the warehouse can keep using :meth:`from_directory`.
+        """
+        return cls.from_directory(
+            root=str(layout.root),
+            manifests_subdir=layout.manifests_dir.relative_to(
+                layout.root
+            ).as_posix(),
+        )
+
     def list(self, kind: Optional[str] = None) -> List[DatasetManifest]:
         if kind is not None and kind not in KNOWN_DATASET_KINDS:
             raise ValueError(
@@ -350,6 +561,160 @@ class DataCatalog:
         if dataset_id not in self._manifests:
             raise KeyError(f"dataset not found in catalog: {dataset_id}")
         return self._manifests[dataset_id]
+
+    # ------------------------------------------------------------------
+    # Warehouse coverage / versioning queries
+    # ------------------------------------------------------------------
+
+    def find_coverage(
+        self,
+        symbol: str,
+        interval: str,
+        start: str,
+        end: str,
+    ) -> List[DatasetManifest]:
+        """Return manifests whose (symbol coverage, interval,
+        window) overlap the query.
+
+        * ``symbol`` — must appear in the manifest's ``symbols`` or
+          ``benchmarks`` tuple.
+        * ``interval`` — must match the manifest's ``interval``
+          field verbatim.  A manifest with an empty ``interval`` is
+          treated as matching only when the query interval is empty
+          too (legacy Phase 3 manifests).
+        * ``start`` / ``end`` — the manifest's declared window must
+          overlap ``[start, end]``.  Empty declared bounds count as
+          open-ended on the corresponding side.
+
+        Results are sorted by ``(start_date, dataset_id)`` so
+        callers see the earliest-covering dataset first.
+        """
+        matches: List[DatasetManifest] = []
+        for manifest in self._manifests.values():
+            if not manifest.covers_symbol(symbol):
+                continue
+            if manifest.interval != interval:
+                continue
+            if not manifest.covers_window(start, end):
+                continue
+            matches.append(manifest)
+        matches.sort(
+            key=lambda m: (m.start_date or "", m.dataset_id)
+        )
+        return matches
+
+    def gaps(
+        self,
+        symbol: str,
+        interval: str,
+        start: str,
+        end: str,
+    ) -> List[Tuple[str, str]]:
+        """Return the uncovered ``[start, end]`` sub-ranges within
+        the query window for the given symbol/interval.
+
+        The catalog knows coverage at day-level granularity via
+        ``start_date`` / ``end_date``.  Intra-day gaps and per-bar
+        holes are the concern of the gap-detection card
+        (``t_phase56_gap_detection``); this method only computes
+        gaps between contiguous manifest windows.
+
+        Result is ordered by ``(gap_start, gap_end)``.  When the
+        query window is fully covered the result is empty.
+        """
+        if not start or not end:
+            raise ValueError(
+                "gaps() requires explicit start and end query bounds"
+            )
+        if start > end:
+            raise ValueError("start must be <= end")
+        hits = self.find_coverage(symbol, interval, start, end)
+        # Union windows clamped to the query range.
+        windows: List[Tuple[str, str]] = []
+        for m in hits:
+            w_start = max(m.start_date, start) if m.start_date else start
+            w_end = min(m.end_date, end) if m.end_date else end
+            if w_start > w_end:
+                continue
+            windows.append((w_start, w_end))
+        if not windows:
+            return [(start, end)]
+        windows.sort()
+        # Merge overlapping/adjacent windows.  ``adjacent`` is
+        # deliberately strict: (a, b) and (c, d) merge only when
+        # c <= b (same or overlapping).  Callers who care about
+        # single-day gaps between b and c are expected to inspect
+        # the returned gaps explicitly rather than tune this
+        # heuristic.
+        merged: List[Tuple[str, str]] = []
+        for w in windows:
+            if merged and w[0] <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], w[1]))
+            else:
+                merged.append(w)
+        gaps: List[Tuple[str, str]] = []
+        cursor = start
+        for w_start, w_end in merged:
+            if cursor < w_start:
+                gaps.append((cursor, w_start))
+            cursor = max(cursor, w_end)
+        if cursor < end:
+            gaps.append((cursor, end))
+        return gaps
+
+    def latest_validated(
+        self,
+        symbol: str,
+        interval: str,
+    ) -> Optional[DatasetManifest]:
+        """Return the most recent ``validation_status='validated'``
+        manifest covering ``symbol`` at ``interval``, or ``None``.
+
+        Ordering: latest ``end_date`` first, ties broken by
+        ``dataset_id`` descending (so a newer ``…-v2`` beats an
+        older ``…-v1`` when their windows are identical).
+        """
+        candidates = [
+            manifest
+            for manifest in self._manifests.values()
+            if manifest.validation_status == WAREHOUSE_STATUS_VALIDATED
+            and manifest.interval == interval
+            and manifest.covers_symbol(symbol)
+        ]
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda m: (m.end_date or "", m.dataset_id),
+            reverse=True,
+        )
+        return candidates[0]
+
+    def versions(self, dataset_id: str) -> List[DatasetManifest]:
+        """Return every manifest in the version chain of
+        ``dataset_id``.
+
+        A "chain" is the union of:
+
+        * the manifest with ``dataset_id`` if the catalog has it and
+          it has no ``parent_dataset_id`` (i.e. it is a v1 root),
+        * every manifest whose ``parent_dataset_id`` matches the
+          argument.
+
+        Ordering: numeric ascending on ``corporate_action_version``
+        when parseable as an int, else lexical.  The v1 root comes
+        first when present.  ``versions(x)`` returns ``[]`` when
+        neither the root nor any child is in the catalog.
+        """
+        _validate_dataset_id(dataset_id)
+        result: List[DatasetManifest] = []
+        root = self._manifests.get(dataset_id)
+        if root is not None and not root.parent_dataset_id:
+            result.append(root)
+        for manifest in self._manifests.values():
+            if manifest.parent_dataset_id == dataset_id:
+                result.append(manifest)
+        result.sort(key=_version_sort_key)
+        return result
 
     def checksum_file(self, dataset_id: str, relative_path: str) -> str:
         """Return the on-disk SHA-256 for a file referenced by a dataset."""
