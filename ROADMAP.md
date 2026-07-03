@@ -1272,6 +1272,144 @@ read-only.  Order-path behavior is untouched throughout.
 
 ---
 
+## Phase 5.5 — Research & Learning Dashboard
+
+**Status:** PLANNED
+
+**Objective:** Provide a read-only web UI that visualises the state
+of every Phase 3, Phase 4, and Phase 5 artifact so operators can
+inspect research and learning progress without opening the raw JSON
+under `reports/`.
+
+The dashboard is auxiliary observability tooling.  It is not part
+of the linear v1.0 gate: Phase 6 (Production Readiness) does not
+require it, and v1.0 does not block on it.  It is intentionally
+placed after Phase 5 (which produces the artifacts) and before
+Phase 6 (which advances toward live trading) so operators reviewing
+promotion evidence have a UI available.
+
+**Exit Criteria:** A read-only web UI renders every listed view from
+the on-disk artifact tree without executing trades, enabling feature
+flags, advancing promotion state, or exposing credentials.  Any
+future action button that would advance state requires explicit
+human confirmation and lands via a separate approval workflow that
+does not exist yet.
+
+### Planning Card: Research Dashboard Technical Design
+- **Card:** `t_phase55_dashboard_plan`
+- **Status:** Backlog
+- **Scope:** Planning only.  No frontend code, no web server
+  dependencies, no auth layer.  Establishes architecture, safety
+  rules, and a card breakdown for the eventual implementation
+  phase.
+
+### Views the dashboard must eventually surface
+
+1. **Current research run status** — active or most recent
+   `HistoricalValidationBundle`, `LearningReport`, and analyst
+   run; source ids and hashes.
+2. **Dataset Catalog status** — every `DatasetManifest` in
+   `research_data/manifests/`, its kind, checksum status, and
+   last-validated timestamp.
+3. **Latest backtest runs** — `BacktestReport` bundles under
+   `reports/backtests/`.
+4. **Champion vs Challenger comparison summaries** — per-run
+   disagreement counts by kind, score-delta means, and score-table
+   sample size.
+5. **Walk-forward results** — `WalkForwardReport` bundles with
+   split-by-split OOS metrics.
+6. **Promotion gate status** — every `PromotionEntry` with its
+   current state, required-vs-supplied evidence, and the alert
+   markers from the standard rollback criteria.
+7. **Learning findings** — `StatisticalFinding` records grouped by
+   `hypothesis` / `validated` label.
+8. **Feature importance** — `FeatureImportanceScore` records
+   ranked by absolute score with flag reasons visible.
+9. **Weight recommendations** — `WeightRecommendation` records
+   with their `required_promotion_state`, rationale, and the
+   `RecommendationEnvelope` routing metadata.
+10. **LLM Research Analyst summaries** — `LLMNarrative` records +
+    `ResearchAnalystReport` bundles.
+11. **Feature-flag readiness** — for each flag in
+    `strategy/config.FeatureFlags`, its current global state,
+    linked `PromotionEntry`, and current promotion state.
+12. **Evidence required before approval** — what
+    `evaluate_promotion` says is missing on each entry heading
+    toward `approved` or `production`.
+13. **Rollback alerts** — every triggered alert from
+    `STANDARD_ROLLBACK_CRITERIA` across every entry.
+
+### Hard Safety Rules
+
+These rules apply to every Phase 5.5 card.
+
+1. **Read-only by default.**  The dashboard reads artifacts from
+   `reports/`, `research_data/`, and `trades_history.db`; it does
+   not write to any of them.
+2. **No credential exposure.**  The dashboard never displays
+   `RESEARCH_ALPACA_*`, `ALPACA_*`, `CRYPTO_ALPACA_*`,
+   `RESEARCH_LLM_ENDPOINT`, `PRODUCTION_*`, `OPENAI_API_KEY`,
+   `TELEGRAM_*`, or any other secret.  Config values render as
+   env-var *names* only (matching the pattern
+   `ResearchAccountConfig` already enforces).
+3. **No production credentials loaded.**  The web server process
+   never loads `.env.production`.  Neither the launcher nor the
+   systemd example may point at production credentials.
+4. **No promotion advance from the UI.**  Any control that would
+   flip a `PromotionEntry` state, enable a feature flag, or
+   populate `.env.production` is out of scope for Phase 5.5.
+   Advancing state remains a human-authored
+   `ApprovalRecord` operation performed via the promotion-gate
+   process, not via clicking a button in a browser.
+5. **Explicit human confirmation for any state-changing action.**
+   If, in a future extension, an action button is added (for
+   example, "attach this recommendation to a PromotionEntry as
+   evidence"), the click must open a confirmation dialog that
+   requires the operator to type or paste a stable token (a
+   `PromotionEntry` id, an `ApprovalRecord` id, or similar) before
+   the action is dispatched.
+6. **No new web server dependencies until the implementation
+   card lands.**  The planning card must not pull in a web
+   framework, template engine, or asset pipeline.
+7. **Terminology.**  Validation, replay, research.  Never
+   "training".
+
+### Suggested implementation cards (Backlog until planning is
+Done)
+
+- `t_phase55_dashboard_backend` — read-only artifact scanner
+  (walks `reports/`, `research_data/`, and DB read-only) that
+  serves JSON views from a minimal Python entrypoint.  Chosen
+  framework, storage, and caching layer are the planning card's
+  output.
+- `t_phase55_dashboard_frontend` — static UI that consumes the
+  backend JSON.  Framework choice is a planning-card decision.
+- `t_phase55_dashboard_auth` — read-only session model + explicit
+  confirmation dialog for any future state-changing action.
+- `t_phase55_dashboard_deployment` — systemd example under
+  `docs/systemd/traderjoe-dashboard.service` (read-only user, no
+  credentials in the process env).
+
+### Architectural Risks
+
+- **Credential leak via error pages.**  Stack traces or debug
+  panels can surface env vars.  Mitigation: the backend must
+  render errors through a whitelist and refuse to include any
+  variable name matching a credential-shaped pattern.
+- **CSRF / XSS on future state-changing actions.**  If any
+  action button is ever added, standard CSRF tokens and
+  content-security-policy headers are required.
+- **Silent scope creep to write actions.**  The moment the
+  backend can advance a `PromotionEntry` state, the read-only
+  invariant is broken.  Every implementation card must ship a
+  test that reads `PromotionEntry` bytes before and after a
+  dashboard round-trip and asserts equality.
+- **Dependence on live artifacts.**  The dashboard must degrade
+  gracefully when a `reports/` subtree is missing rather than
+  crash — Phase 5.5 tests should verify this on empty fixtures.
+
+---
+
 ## Phase 6 — Production Readiness
 
 **Status:** PLANNED (v1.0 definition captured)
