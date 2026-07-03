@@ -4,6 +4,117 @@ Trader Joe release history.
 
 ---
 
+## v0.25.0 — Phase 5: Local LLM Research Assistant
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase5_local_llm_research_assistant`
+
+### Added
+- `strategy/research_analyst.py` — read-only Research Analyst that
+  consumes Phase 3 / Phase 4 artifacts and produces a research
+  narrative
+- `LocalLLMClient`:
+  - Loopback-only endpoint check (`127.0.0.1`, `localhost`, `::1`);
+    rejects `0.0.0.0`, public IPs, remote hostnames, and non-http
+    schemes at construction time
+  - `temperature=0.0` enforced; positive timeout enforced
+  - Cloud model tokens (`openai` / `anthropic` / `google` / `azure`
+    / `aws` / `gemini` / `claude` / `chatgpt`) refused at
+    construction and at `effective_model` resolution
+  - Model resolution via `strategy.model_config.resolve_model` with
+    the `CONTEXT_RESEARCH` context; precedence
+    `explicit > RESEARCH_AI_MODEL > client default`
+  - Endpoint resolution from `RESEARCH_LLM_ENDPOINT`; defaults to
+    `http://127.0.0.1:11434`
+  - Accepts Ollama (`{"message":{"content":...}}`) and OpenAI-compat
+    (`{"choices":[{"message":{"content":...}}]}`) response shapes
+- `LLMNarrative` frozen dataclass with `narrative_id`, `prompt_hash`,
+  `source_hash`, `model`, `warnings`, and a `stable_hash` that
+  excludes `generated_at`
+- `ResearchAnalyst` orchestrator:
+  - Refuses at construction if the system prompt does not contain
+    the "recommend a trade" prohibition clause
+  - Convenience methods for each source kind:
+    `analyze_comparison`, `analyze_walk_forward`,
+    `analyze_learning_report`, `analyze_research_report`,
+    `analyze_promotion_report`
+  - Forbidden-output detection: scans the LLM response for
+    trade-recommendation phrases (`you should buy`, `recommend
+    buying`, ...) and forbidden section headings
+    (`## Recommendation`, `## Next Steps`, `## Action Items`) and
+    surfaces them as `LLMNarrative.warnings` for human review
+- `SYSTEM_PROMPT` explicitly forbids trade recommendations, flag
+  advocacy, and promotion advocacy; mandates the six analytical
+  sections and forbids Recommendation / Next Steps / Action Items
+- `ResearchAnalystReport` + `ResearchAnalystReportPaths` mirroring
+  the Phase 4 `LearningReport` layout:
+  `<output_dir>/<report_id>/report.md`, `report.json`,
+  `narrative.json`, `manifest.json`; deterministic `report_id`
+  derived from `narrative_id + source_hash`
+- `compose_analyst_prompt` deterministic prompt composer
+- Model / endpoint / kind / filename / prefix constants exported
+
+### Tests
+- `tests/test_research_analyst.py` — 96 tests covering:
+  - Loopback endpoint acceptance (`127.0.0.1`, `localhost`, `::1`,
+    `[::1]`); non-loopback rejection (public IP, public host,
+    `0.0.0.0`, `192.168.1.10`); missing-scheme rejection; env-var
+    endpoint resolution; default-endpoint fallback
+  - Cloud model token rejection at construction and at
+    `effective_model`; no-model-resolved error;
+    explicit > env > default precedence
+  - Non-zero temperature rejected; non-positive timeout rejected
+  - Ollama and OpenAI-compat response shapes; missing content
+    raises; non-JSON body raises; transport exception wrapped;
+    explicit model override propagates into the wire body
+  - `compose_analyst_prompt` determinism, source-metadata carrying,
+    unknown-kind rejection, empty source id/hash rejection
+  - `LLMNarrative` roundtrip; `stable_hash` excludes `generated_at`;
+    all field validation errors
+  - `ResearchAnalyst` refuses empty and permissive system prompts;
+    analyze returns narrative with source metadata; delivered
+    prompt matches the composer; system prompt is `SYSTEM_PROMPT`;
+    `narrative_id` and `prompt_hash` deterministic across
+    `generated_at` differences; explicit model propagates; forbidden
+    output phrase and heading detected as warnings; clean output
+    has no warnings
+  - Convenience methods for every source kind (comparison /
+    walk-forward / learning / research / promotion) unpack the
+    correct metadata
+  - `ResearchAnalystReportPaths` derives all four artifact paths
+  - `render_analyst_report`: `rr_`-family prefix (`ra_`);
+    default-title includes source kind; custom title; payload
+    schema; manifest reproducibility metadata; markdown key
+    sections; warnings section conditional; `stable_hash`
+    independent of `generated_at`
+  - `write` persists all four files; JSON files parse; is
+    idempotent; lands under `<output_dir>/<report_id>/`
+  - Byte-identical reruns: repeat render with same `generated_at`
+    produces identical `to_json` / `to_markdown` /
+    `narrative_json` / `manifest_json`
+  - Source safety: no order-path references; no cloud LLM SDK
+    imports; no `strategy.config` import; no live-runner imports;
+    terminology audit passes; import-time exclusion of
+    `trader_cli`, `trader`, `crypto_trader`, `telegram_approvals`;
+    module never mutates global `FeatureFlags`
+- 1157 passing total (0 failures)
+
+### Notes
+- No trading behavior changed; runner, scheduler, Telegram, CLI,
+  plugin behavior untouched
+- No feature flags enabled; module never imports `strategy.config`
+- Localhost-only by construction; refuses cloud endpoints; refuses
+  cloud model names
+- Deterministic: report ids and prompt hashes are stable given the
+  same source; given a deterministic LLM response the entire
+  four-file bundle is byte-identical
+- Follow-up card `t_phase5_two_month_validation_run` remains in
+  Backlog
+
+---
+
 ## v0.24.0 — Phase 5: Isolated Research Alpaca Client
 
 **Date:** 2026-07-03

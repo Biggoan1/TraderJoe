@@ -6,7 +6,7 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 5 Local LLM Research Assistant (`t_phase5_local_llm_research_assistant`, Ready)
+- Current: Phase 5 Local LLM Research Assistant (`t_phase5_local_llm_research_assistant`, Review)
 - Last completed: Phase 5 Isolated Research Alpaca Client (`t_phase5_research_account_api`)
 - Workflow: Kanban (see KANBAN.md)
 
@@ -17,7 +17,7 @@
 - Status: Research Alpaca client validated + env isolation + launchers + model config; Local LLM Research Assistant ready
 
 ## Testing
-- Tests passing: 1061
+- Tests passing: 1157
 - Tests failing: 0
 - Last run: 2026-07-03
 

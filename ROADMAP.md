@@ -1161,7 +1161,33 @@ read-only.  Order-path behavior is untouched throughout.
   (isolation docs) plus `021351f` (launchers + model config).
 
 #### `t_phase5_local_llm_research_assistant` — Local LLM Research Assistant
-- **Status:** Ready
+- **Status:** Review
+- **Implementation note:** `strategy/research_analyst.py` adds
+  `LocalLLMClient` (loopback-only endpoint check; `temperature=0.0`
+  enforced; cloud-model tokens refused;
+  `RESEARCH_LLM_ENDPOINT` env resolution;
+  Ollama + OpenAI-compat response shapes),
+  `LLMNarrative` (frozen record with `narrative_id`, `prompt_hash`,
+  `source_hash`, `model`, and `stable_hash` that excludes
+  `generated_at`), `ResearchAnalyst` (system prompt explicitly
+  forbids trading recommendations / flag advocacy / promotion
+  advocacy and mandates the six analytical sections;
+  refuses at construction time if the system prompt does not
+  contain the "recommend a trade" prohibition clause;
+  per-source-kind convenience methods for `ChampionChallengerComparison`,
+  `WalkForwardReport`, `LearningReport`, `ResearchReport`,
+  `PromotionReport`), forbidden-output detection that flags
+  trade-recommendation phrases and recommendation/next-steps/action-items
+  headings, and `ResearchAnalystReport` bundle mirroring the Phase 4
+  `LearningReport` layout (`report.md` + `report.json` +
+  `narrative.json` + `manifest.json`) with deterministic `report_id`
+  derived from `narrative_id + source_hash`.  Reproducible: given
+  the same source and same LLM response, all four artifact files
+  are byte-identical.  Explicit model overrides supported via
+  `analyze(..., explicit_model=...)` and `chat(..., model=...)` for
+  future Hermes routing.  Never imports `strategy.config`, no
+  cloud-LLM SDK imports, no live-runner imports, terminology audit
+  passes.
 - **Scope:** Add a `LocalLLMClient` protocol and a concrete
   implementation targeting a local endpoint (Ollama / LM Studio).
   Add `LLMSummary` (frozen dataclass with model id, prompt hash,
