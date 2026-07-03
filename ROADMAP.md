@@ -675,7 +675,7 @@ config.
   Kanban breakdown; KANBAN.md reflects the six implementation cards.
 
 #### `t_phase4_stats_engine` — Statistical Decision-Support Layer
-- **Status:** Ready
+- **Status:** Review
 - **Scope:** Add read-only descriptive statistics, confidence
   intervals, effect-size estimates, and sample-size checks over the
   trades log and Phase 3 comparison outputs. Produce
@@ -686,6 +686,25 @@ config.
 - **Validation:** Tests for correct effect-size math on known
   fixtures, confidence-interval boundary behavior, sample-size floor
   enforcement, and reproducibility.
+- **Implementation note:** `strategy/stats_engine.py` adds
+  `StatisticalFinding`, `analyze_comparison`, and
+  `analyze_walk_forward` plus numeric helpers (`normal_mean_ci`,
+  `wilson_proportion_ci`, `cohens_d_one_sample`,
+  `cohens_d_two_sample`) and `findings_stable_hash`.  Findings are
+  labeled `validated` iff their sample size meets
+  `STATS_SAMPLE_SIZE_FLOOR` (default 30); otherwise `hypothesis`.
+  Analysis returns findings in fixed metric order per input type:
+  `score_delta_mean → rank_delta_mean → disagreement_rate →
+  selection_agreement_rate` for a comparison, and
+  `wf_score_delta_mean → wf_disagreement_rate` aggregated across all
+  splits' OOS comparisons for a walk-forward report.  Evidence ids
+  reference the source `run_id` values so downstream reports can trace
+  every finding back to a reproducible artifact.  Uses the
+  normal-approximation z-table for mean CIs and Wilson score intervals
+  for proportion CIs (supported confidence levels: 0.90, 0.95, 0.99).
+  Never imports `strategy.config`, never reads or mutates the
+  `FeatureFlags` singleton, and never references any order-path
+  module.
 
 #### `t_phase4_pattern_discovery` — Historical Pattern Discovery
 - **Status:** Backlog (depends on Phase 2 intelligence modules only)

@@ -4,6 +4,90 @@ Trader Joe release history.
 
 ---
 
+## v0.18.0 — Phase 4: Statistical Decision-Support Layer
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase4_stats_engine`
+
+### Added
+- `strategy/stats_engine.py` — read-only descriptive-statistics layer
+  over Phase 3 comparison artifacts
+- `StatisticalFinding` frozen dataclass with metric, effect size,
+  confidence-interval bounds, sample size, methodology,
+  `hypothesis` / `validated` label, confidence level, evidence ids,
+  and detail
+- Deterministic numeric helpers: `normal_mean_ci` (normal-approx mean
+  CI), `wilson_proportion_ci` (Wilson score proportion CI),
+  `cohens_d_one_sample`, `cohens_d_two_sample`
+- Supported confidence levels: 0.90, 0.95, 0.99
+  (`SUPPORTED_CONFIDENCE_LEVELS`)
+- Sample-size floor `STATS_SAMPLE_SIZE_FLOOR = 30` gates the
+  `validated` label; smaller samples fall through to `hypothesis`
+- `analyze_comparison(comparison)` returns findings in fixed order:
+  `score_delta_mean → rank_delta_mean → disagreement_rate →
+  selection_agreement_rate`
+- `analyze_walk_forward(wf_report)` returns aggregate findings
+  (`wf_score_delta_mean` + `wf_disagreement_rate`) across all splits'
+  OOS comparisons — never mixes in-sample data
+- Evidence ids on every finding reference the source `run_id` values
+  so downstream reports can trace back to reproducible artifacts
+- `findings_stable_hash` produces an order-independent deterministic
+  hash across a sequence of findings
+
+### Tests
+- `tests/test_stats_engine.py` — 59 tests covering:
+  - `normal_mean_ci`: empty input, single-value, known mean/stdev,
+    CI widens at higher confidence, rejects unsupported confidence
+  - `wilson_proportion_ci`: zero trials, all success (CI < 1), all
+    failure (CI > 0), half-success centred near 0.5, boundaries
+    clipped to [0, 1], invalid inputs rejected
+  - `cohens_d_one_sample` / `cohens_d_two_sample`: known effect sizes,
+    zero-variance and empty-sample degenerate cases, symmetry
+  - `SUPPORTED_CONFIDENCE_LEVELS` exposes 0.90 / 0.95 / 0.99
+  - `StatisticalFinding`: roundtrip, `is_significant` at all CI
+    boundary configurations (excludes-zero, spans-zero, touches-zero,
+    negative-only), evidence-ids tuple coercion, and every
+    constructor validation error
+  - `analyze_comparison`: fixed metric ordering; label defaults to
+    `hypothesis` for small samples; `validated` label triggered when
+    sample meets floor; score delta finding surfaces a positive
+    effect and a CI excluding zero; disagreement rate + selection
+    agreement rate finding math on a two-symbol fixture; empty
+    comparison yields zero-sample findings; evidence ids reference the
+    comparison run id; confidence-level propagation; custom
+    sample-size floor; negative floor rejected
+  - `analyze_walk_forward`: fixed metric ordering; evidence ids
+    include the walk-forward report id plus every split's comparison
+    run id; score delta sample count matches OOS row count;
+    disagreement rate = 1.0 for the fixture; labels default to
+    hypothesis below floor; negative floor rejected
+  - Determinism: repeat analysis produces identical findings;
+    `findings_stable_hash` deterministic and order-independent
+  - Observational-only: no `alpaca`, `place_order`, `submit_order`,
+    `TradingClient`, `api_key`, or `yfinance` references; terminology
+    check; module never mutates global feature flags; import-time
+    exclusion of `trader_cli`, `trader`, `crypto_trader`,
+    `telegram_approvals`; source-level assertion that the module does
+    not import `strategy.config`
+- 715 passing total (0 failures)
+
+### Notes
+- Module is behavior-neutral: production Champion path is unchanged;
+  runner, scheduler, Telegram, CLI, and plugin behavior untouched
+- No feature flags enabled; module never imports `strategy.config`
+- No broker credentials, HTTP calls, or historical validation paper
+  account wiring
+- The `validated` label indicates only that the underlying sample
+  meets `STATS_SAMPLE_SIZE_FLOOR` — it is **not** a promotion signal
+  and does not by itself justify advancing a feature past `disabled`
+- Follow-up cards remain in Backlog: `t_phase4_pattern_discovery`,
+  `t_phase4_feature_importance`, `t_phase4_weight_recommender`,
+  `t_phase4_learning_reports`, `t_phase4_validation`
+
+---
+
 ## v0.17.0 — Phase 3: Feature Promotion Gates
 
 **Date:** 2026-07-02
