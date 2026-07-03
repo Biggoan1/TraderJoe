@@ -506,7 +506,7 @@ class TestLiveFetchRsMap:
     def test_rs_map_populated_when_bars_have_enough_history(self, tmp_path):
         client = _StubResearchClient(_diverging_bars(days=45))
         config = self._config(tmp_path)
-        events, champion_scores, rs_map = _fetch_live_events(config, client)
+        events, champion_scores, rs_map, bars = _fetch_live_events(config, client)
         assert events, "expected non-empty events"
         # Post-lookback timestamps must contain entries for every symbol
         # with bars covering the window.
@@ -521,7 +521,7 @@ class TestLiveFetchRsMap:
     def test_rs_map_directions_match_bar_trajectories(self, tmp_path):
         client = _StubResearchClient(_diverging_bars(days=45))
         config = self._config(tmp_path)
-        _, _, rs_map = _fetch_live_events(config, client)
+        _, _, rs_map, _ = _fetch_live_events(config, client)
         latest = rs_map[max(rs_map)]
         # AAPL trends up vs a flat benchmark -> RS > neutral
         assert latest["AAPL"] > 50.0
@@ -533,13 +533,13 @@ class TestLiveFetchRsMap:
     def test_rs_map_empty_when_bars_too_short_for_lookback(self, tmp_path):
         client = _StubResearchClient(_short_bars(days=3))
         config = self._config(tmp_path)
-        _, _, rs_map = _fetch_live_events(config, client)
+        _, _, rs_map, _ = _fetch_live_events(config, client)
         # ``_fetch_live_events`` shrinks lookback to bars_available - 1
         # (min 1) so a 3-bar series may still emit at most one row.
         # The load-bearing assertion is that when bars are short the
         # RS map does not cover the whole event stream — the fallback
         # path must remain active for most events.
-        events, _, _ = _fetch_live_events(config, client)
+        events, _, _, _ = _fetch_live_events(config, client)
         assert len(rs_map) < len(events), (
             "rs_map must not cover every event when bars are too short"
         )
@@ -609,6 +609,202 @@ class TestLiveFetchRsIntegration:
         )
         assert flags.all_disabled is True
         assert flags.enabled_flags == []
+
+
+# ---------------------------------------------------------------------------
+# Champion explanations flow through the pipeline — t_phase5_champion_explanations
+# ---------------------------------------------------------------------------
+
+
+class TestChampionExplanationsFlowThrough:
+    """Full-pipeline assertion: with live-fetched bars in hand, both
+    champion and challenger structured explanations attach to every
+    ``ScoreRow``, propagate into ``DisagreementRecord``s, and land in
+    the learning report's ``explanation_summary`` section.
+    """
+
+    def _config(self, tmp_path) -> HistoricalValidationConfig:
+        return _make_config(
+            tmp_path,
+            live_fetch=True,
+            fixture_events=(),
+            fixture_champion_scores={},
+            fixture_rs_map={},
+        )
+
+    def _run(self, tmp_path):
+        reset_feature_flags()
+        client = _StubResearchClient(_diverging_bars(days=60))
+        config = self._config(tmp_path)
+        return run_historical_validation(
+            config,
+            research_client=client,
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+
+    def test_score_rows_carry_champion_structured_explanation(self, tmp_path):
+        bundle = self._run(tmp_path)
+        # At least one row past the champion's minimum-history window
+        # must carry a structured explanation on both sides.
+        non_empty_champion = 0
+        non_empty_challenger = 0
+        for table in bundle.comparison.score_tables:
+            for row in table.rows:
+                if isinstance(row.champion_structured_explanation, dict):
+                    non_empty_champion += 1
+                if isinstance(row.challenger_structured_explanation, dict):
+                    non_empty_challenger += 1
+        assert non_empty_champion > 0, (
+            "champion structured explanations must attach to at least one row"
+        )
+        assert non_empty_challenger > 0, (
+            "challenger structured explanations must attach to at least one row"
+        )
+
+    def test_free_text_explanations_populated_from_structured(self, tmp_path):
+        bundle = self._run(tmp_path)
+        populated = 0
+        for table in bundle.comparison.score_tables:
+            for row in table.rows:
+                if row.champion_explanation:
+                    populated += 1
+        assert populated > 0, (
+            "free-text champion_explanation must be populated from structured "
+            "explanations when available"
+        )
+
+    def test_disagreements_carry_both_sides_explanations(self, tmp_path):
+        bundle = self._run(tmp_path)
+        assert bundle.comparison.disagreements, (
+            "expected some disagreements from the diverging bar trajectories"
+        )
+        with_both = 0
+        for record in bundle.comparison.disagreements:
+            if (
+                isinstance(record.champion_structured_explanation, dict)
+                and isinstance(record.challenger_structured_explanation, dict)
+            ):
+                with_both += 1
+        assert with_both > 0, (
+            "at least one disagreement must carry both champion and challenger "
+            "structured explanations"
+        )
+
+    def test_champion_component_names_appear_in_explanations(self, tmp_path):
+        bundle = self._run(tmp_path)
+        # Somewhere in the run the champion should have fired at least
+        # one of the six gate components.
+        expected_component_names = {
+            "above_sma20",
+            "sma20_above_sma50",
+            "rsi_not_overbought",
+            "macd_positive",
+            "adx_strength",
+            "volume_confirmation",
+        }
+        seen: set = set()
+        for table in bundle.comparison.score_tables:
+            for row in table.rows:
+                exp = row.champion_structured_explanation
+                if not isinstance(exp, dict):
+                    continue
+                for component in exp.get("components", []) or []:
+                    seen.add(component.get("name"))
+        assert seen & expected_component_names, (
+            f"expected champion to fire at least one gate; saw {seen}"
+        )
+
+    def test_challenger_overlay_appends_rs_component_when_data_present(
+        self, tmp_path
+    ):
+        bundle = self._run(tmp_path)
+        rs_component_events = 0
+        for table in bundle.comparison.score_tables:
+            for row in table.rows:
+                exp = row.challenger_structured_explanation
+                if not isinstance(exp, dict):
+                    continue
+                names = [
+                    (c or {}).get("name")
+                    for c in (exp.get("components", []) or [])
+                ]
+                if "rs_overlay" in names:
+                    rs_component_events += 1
+        assert rs_component_events > 0, (
+            "challenger must append rs_overlay component once RS data is "
+            "populated"
+        )
+
+    def test_learning_report_carries_explanation_summary(self, tmp_path):
+        bundle = self._run(tmp_path)
+        payload = bundle.learning_report.payload
+        assert "explanation_summary" in payload, (
+            "learning report payload must include explanation_summary"
+        )
+        summary = payload["explanation_summary"]
+        assert "champion" in summary
+        assert "challenger" in summary
+        assert summary["champion"]["observation_count"] > 0
+        # The champion component pass rates should reflect the six-gate
+        # scorer emitting at least one component.
+        assert summary["champion"]["component_pass_rates"], (
+            "champion component_pass_rates must not be empty"
+        )
+
+    def test_pipeline_still_safe_when_history_is_short(self, tmp_path):
+        # Short bars -> champion rejects every symbol.  The pipeline
+        # must not crash; PromotionEntry stays disabled and the
+        # explanation summary reports the rejection rate.
+        reset_feature_flags()
+        client = _StubResearchClient(_short_bars(days=10))
+        config = self._config(tmp_path)
+        bundle = run_historical_validation(
+            config,
+            research_client=client,
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        assert bundle.promotion_entry.current_state == STATE_DISABLED
+        payload = bundle.learning_report.payload
+        summary = payload.get("explanation_summary", {})
+        champion_summary = summary.get("champion", {})
+        # All symbols rejected due to insufficient_history
+        assert champion_summary.get("rejected_rate", 0) > 0
+
+    def test_no_approval_record_constructed(self, tmp_path):
+        bundle = self._run(tmp_path)
+        assert bundle.promotion_entry.approvals == []
+        assert bundle.promotion_entry.current_state == STATE_DISABLED
+
+    def test_global_feature_flags_remain_disabled(self, tmp_path):
+        flags = reset_feature_flags()
+        self._run(tmp_path)
+        assert flags.all_disabled is True
+        assert flags.enabled_flags == []
+
+
+class TestTraderPyUntouched:
+    """Verifies that no import of trader.py leaks into the research
+    modules that this card touches.  Coupled with the working-tree
+    check in :mod:`git`, this prevents accidental cross-boundary
+    imports from creeping in.
+    """
+
+    def test_score_explanation_never_imports_trader(self):
+        import strategy.score_explanation as module
+        source = open(module.__file__, encoding="utf-8").read()
+        assert "from trader" not in source
+        assert "import trader" not in source
+
+    def test_champion_scoring_never_imports_trader(self):
+        import strategy.champion_scoring as module
+        source = open(module.__file__, encoding="utf-8").read()
+        assert "from trader" not in source
+        assert "import trader" not in source
+        # No actual yfinance import or call — docstring may mention it
+        # to explain WHY this module exists as a research mirror.
+        assert "import yfinance" not in source
+        assert "yf.download" not in source
+        assert "yf.Ticker" not in source
 
 
 # ---------------------------------------------------------------------------

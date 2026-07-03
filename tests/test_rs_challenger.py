@@ -1096,3 +1096,143 @@ class TestBuildRsMapFromBars:
     def test_module_exposes_default_constants(self):
         assert DEFAULT_RS_LOOKBACK_DAYS > 0
         assert DEFAULT_RS_FULLSCALE_PP > 0
+
+
+# ---------------------------------------------------------------------------
+# Structured explanation preservation — t_phase5_champion_explanations
+# ---------------------------------------------------------------------------
+
+
+from strategy.score_explanation import ScoreComponent, ScoreExplanation
+
+
+def _base_with_structured(
+    ts: str, symbol: str, base_score: float
+) -> StrategyEvaluation:
+    """Build a base evaluation whose ``structured_explanations`` map
+    carries a champion-shaped ScoreExplanation for the given symbol.
+    """
+    exp = ScoreExplanation(
+        strategy_id="champion-v0.4.0",
+        symbol=symbol,
+        event_timestamp=ts,
+        final_score=base_score,
+        components=(
+            ScoreComponent(name="above_sma20", contribution=1.5),
+            ScoreComponent(name="macd_positive", contribution=1.5),
+        ),
+        ranking_factors=("above_sma20", "macd_positive"),
+        momentum_contribution=0.4,
+        bonuses=(("adx_continuous", 0.4),),
+        confidence=0.5,
+        notes=("gate_count=3/6",),
+    )
+    return StrategyEvaluation(
+        strategy_id="champion-v0.4.0",
+        event_timestamp=ts,
+        scores={symbol: base_score},
+        rankings=[{"symbol": symbol, "rank": 1}],
+        explanations={symbol: exp.to_summary_str()},
+        warnings=[],
+        structured_explanations={symbol: exp},
+    )
+
+
+@dataclass
+class _StubBase:
+    strategy_id: str
+    evaluation: StrategyEvaluation
+
+    def evaluate(self, event: BacktestEvent) -> StrategyEvaluation:
+        return self.evaluation
+
+
+class TestRSOverlayPreservesChampionExplanation:
+    def test_overlay_appends_rs_component_to_champion_explanation(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        base = _StubBase(
+            strategy_id="champion-v0.4.0",
+            evaluation=_base_with_structured(ts, "AAPL", 0.7),
+        )
+        challenger = RelativeStrengthChallenger(
+            base,
+            rs_provider_from_map({ts: {"AAPL": 90.0}}),
+            flags=FeatureFlags(enable_relative_strength=True),
+        )
+        result = challenger.evaluate(_event(ts))
+        assert "AAPL" in result.structured_explanations
+        exp = result.structured_explanations["AAPL"]
+        component_names = [c.name for c in exp.components]
+        # Champion's original components preserved
+        assert "above_sma20" in component_names
+        assert "macd_positive" in component_names
+        # Overlay component appended at the end
+        assert component_names[-1] == "rs_overlay"
+        # RS value promoted onto the overlay explanation
+        assert exp.rs_contribution == 90.0
+        # Strategy id flips to the challenger
+        assert exp.strategy_id == challenger.strategy_id
+        # Bonuses / confidence / notes carried over
+        assert exp.bonuses == (("adx_continuous", 0.4),)
+        assert exp.confidence == 0.5
+
+    def test_overlay_records_missing_data_note_when_rs_absent(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        base = _StubBase(
+            strategy_id="champion-v0.4.0",
+            evaluation=_base_with_structured(ts, "AAPL", 0.7),
+        )
+        # No RS data for this timestamp
+        challenger = RelativeStrengthChallenger(
+            base,
+            rs_provider_from_map({}),
+            flags=FeatureFlags(enable_relative_strength=True),
+        )
+        result = challenger.evaluate(_event(ts))
+        exp = result.structured_explanations["AAPL"]
+        assert exp.components[-1].name == "rs_overlay"
+        assert exp.components[-1].contribution == 0.0
+        assert "rs_data_missing" in exp.notes
+
+    def test_passthrough_preserves_structured_explanations(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        base = _StubBase(
+            strategy_id="champion-v0.4.0",
+            evaluation=_base_with_structured(ts, "AAPL", 0.7),
+        )
+        # Feature flag disabled -> passthrough path
+        challenger = RelativeStrengthChallenger(
+            base,
+            rs_provider_from_map({ts: {"AAPL": 90.0}}),
+            flags=FeatureFlags(enable_relative_strength=False),
+        )
+        result = challenger.evaluate(_event(ts))
+        exp = result.structured_explanations["AAPL"]
+        assert exp.strategy_id == "champion-v0.4.0"
+        # No rs_overlay component added in passthrough
+        component_names = [c.name for c in exp.components]
+        assert "rs_overlay" not in component_names
+
+    def test_overlay_survives_base_without_structured_explanation(self):
+        # Base emits scores but no structured_explanations -> overlay
+        # must still produce a valid ScoreExplanation from scratch.
+        ts = "2026-07-02T14:30:00+00:00"
+        raw_base = StrategyEvaluation(
+            strategy_id="champion-v0.4.0",
+            event_timestamp=ts,
+            scores={"AAPL": 0.5},
+            rankings=[{"symbol": "AAPL", "rank": 1}],
+            explanations={"AAPL": "raw"},
+            warnings=[],
+        )
+        base = _StubBase(strategy_id="champion-v0.4.0", evaluation=raw_base)
+        challenger = RelativeStrengthChallenger(
+            base,
+            rs_provider_from_map({ts: {"AAPL": 90.0}}),
+            flags=FeatureFlags(enable_relative_strength=True),
+        )
+        result = challenger.evaluate(_event(ts))
+        # structured_explanations populated even though base didn't have one
+        assert "AAPL" in result.structured_explanations
+        exp = result.structured_explanations["AAPL"]
+        assert exp.strategy_id == challenger.strategy_id

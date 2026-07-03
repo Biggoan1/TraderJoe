@@ -393,6 +393,7 @@ def render_learning_report(
     envelopes: Sequence[RecommendationEnvelope] = (),
     title: Optional[str] = None,
     generated_at: Optional[str] = None,
+    explanation_summary: Optional[Mapping[str, Any]] = None,
 ) -> LearningReport:
     """Aggregate Phase 4 records into a :class:`LearningReport`."""
     generated = generated_at or _utc_now_iso()
@@ -437,6 +438,8 @@ def render_learning_report(
         "weight_recommendations": recommendations_payload,
         "recommendation_envelopes": envelopes_payload,
     }
+    if explanation_summary is not None:
+        payload["explanation_summary"] = dict(explanation_summary)
     manifest = {
         "report_id": report_id,
         "kind": LEARNING_REPORT_KIND,

@@ -71,6 +71,10 @@ from strategy.research_reports import (
     render_comparison_report,
     render_walk_forward_report,
 )
+from strategy.champion_scoring import (
+    ChampionScorer,
+    ChampionScoringConfig,
+)
 from strategy.rs_challenger import (
     DEFAULT_RS_LOOKBACK_DAYS,
     RS_CHALLENGER_STRATEGY_ID,
@@ -397,6 +401,38 @@ def _run_walk_forward(
     )
 
 
+def _build_explanation_summary(
+    comparison: ChampionChallengerComparison,
+) -> Dict[str, Any]:
+    """Aggregate champion + challenger structured explanations across
+    every ``(event, symbol)`` row of the comparison so the learning
+    report can carry gate pass rates, top ranking factors, and
+    rejection rates for both sides.
+
+    Empty dicts fall through gracefully — strategies without a
+    structured explanation surface produce a summary with
+    ``observation_count=0``.
+    """
+    from strategy.score_explanation import aggregate_explanation_dicts
+
+    champion_dicts: List[Dict[str, Any]] = []
+    challenger_dicts: List[Dict[str, Any]] = []
+    for table in comparison.score_tables:
+        for row in table.rows:
+            champion = row.champion_structured_explanation
+            if isinstance(champion, dict):
+                champion_dicts.append(champion)
+            challenger = row.challenger_structured_explanation
+            if isinstance(challenger, dict):
+                challenger_dicts.append(challenger)
+    return {
+        "champion_id": comparison.metadata.champion_id,
+        "challenger_id": comparison.metadata.challenger_id,
+        "champion": aggregate_explanation_dicts(champion_dicts),
+        "challenger": aggregate_explanation_dicts(challenger_dicts),
+    }
+
+
 def _build_findings(
     comparison: ChampionChallengerComparison,
     walk_forward_report: WalkForwardReport,
@@ -465,16 +501,20 @@ def _fetch_live_events(
     List[BacktestEvent],
     Dict[str, Dict[str, float]],
     Dict[str, Dict[str, float]],
+    Dict[str, List[Dict[str, Any]]],
 ]:
     """Live-fetch pathway.
 
     Calls the Research Account Client for historical bars, converts
-    them into deterministic events, a Champion score map, and an
+    them into deterministic events, a placeholder Champion score map
+    (kept for downstream fixture persistence and legacy tests), an
     RS map keyed ``{timestamp: {symbol: rs_value}}`` for the RS
-    Challenger.  The scoring function is intentionally simple
-    (percent change vs the window mean) — a follow-up card can plug
-    in the real Champion scoring logic once it is extracted from
-    ``trader.py``.  The RS map uses
+    Challenger, and the raw ``bars_by_symbol`` dict so
+    :class:`strategy.champion_scoring.ChampionScorer` can produce
+    real per-event Champion scores + structured explanations without
+    hitting the network a second time.
+
+    The RS map uses
     :func:`strategy.rs_challenger.build_rs_map_from_bars`, which
     reads the same bars deterministically without any external
     dependencies.
@@ -533,7 +573,7 @@ def _fetch_live_events(
         )
         for index, timestamp in enumerate(timestamps)
     ]
-    return events, scores_by_timestamp, rs_map
+    return events, scores_by_timestamp, rs_map, dict(bars_by_symbol)
 
 
 # ---------------------------------------------------------------------------
@@ -571,8 +611,9 @@ def run_historical_validation(
     generated = generated_at or _utc_now_iso()
     warnings: List[str] = []
 
+    bars_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
     if config.live_fetch:
-        events, champion_scores, rs_map = _fetch_live_events(
+        events, champion_scores, rs_map, bars_by_symbol = _fetch_live_events(
             config, research_client
         )
         live_fetch_used = True
@@ -609,10 +650,22 @@ def run_historical_validation(
     if not events:
         warnings.append("no events supplied; downstream artifacts will be empty")
 
-    champion = _FixtureChampion(
-        strategy_id=config.champion_id,
-        scores_by_timestamp=champion_scores,
-    )
+    # Champion: when live-fetch bars are available, use the research
+    # ChampionScorer so evaluations carry structured explanations.
+    # Otherwise (fixture path) fall back to _FixtureChampion.
+    champion: Any
+    if bars_by_symbol:
+        champion = ChampionScorer(
+            strategy_id=config.champion_id,
+            bars_by_symbol=bars_by_symbol,
+            symbols=config.symbols,
+            config=ChampionScoringConfig(),
+        )
+    else:
+        champion = _FixtureChampion(
+            strategy_id=config.champion_id,
+            scores_by_timestamp=champion_scores,
+        )
     # Locally-scoped FeatureFlags for the challenger — global flags
     # remain disabled throughout.
     local_flags = FeatureFlags(enable_relative_strength=True)
@@ -630,10 +683,12 @@ def run_historical_validation(
         config, champion, challenger, events, generated
     )
     findings = _build_findings(comparison, walk_forward_report)
+    explanation_summary = _build_explanation_summary(comparison)
     learning_report = render_learning_report(
         findings=findings,
         title=f"Learning Report — {config.dataset_id}",
         generated_at=generated,
+        explanation_summary=explanation_summary,
     )
 
     reports_root = Path(config.report_root)

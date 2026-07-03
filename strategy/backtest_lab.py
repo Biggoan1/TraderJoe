@@ -248,7 +248,18 @@ class DeterministicReplayClock:
 
 @dataclass
 class StrategyEvaluation:
-    """Read-only strategy evaluation output for replay events."""
+    """Read-only strategy evaluation output for replay events.
+
+    ``structured_explanations`` is an optional dict of per-symbol
+    :class:`strategy.score_explanation.ScoreExplanation` objects that
+    describe *why* the score landed where it did.  Strategies without
+    a structured explanation surface (e.g. legacy fixtures) leave this
+    empty; consumers should treat missing entries as "not applicable
+    to this strategy".  Free-text ``explanations`` are kept for
+    backward compat and — when a strategy populates
+    ``structured_explanations`` — are typically the
+    ``to_summary_str()`` of the same object.
+    """
 
     strategy_id: str
     event_timestamp: str
@@ -256,9 +267,15 @@ class StrategyEvaluation:
     rankings: List[Dict[str, Any]] = field(default_factory=list)
     explanations: Dict[str, str] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
+    structured_explanations: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        structured: Dict[str, Any] = {}
+        for symbol, exp in self.structured_explanations.items():
+            structured[symbol] = (
+                exp.to_dict() if hasattr(exp, "to_dict") else exp
+            )
+        payload: Dict[str, Any] = {
             "strategy_id": self.strategy_id,
             "event_timestamp": self.event_timestamp,
             "scores": dict(self.scores),
@@ -266,6 +283,9 @@ class StrategyEvaluation:
             "explanations": dict(self.explanations),
             "warnings": list(self.warnings),
         }
+        if structured:
+            payload["structured_explanations"] = structured
+        return payload
 
 
 class NoOpStrategyAdapter:

@@ -27,6 +27,7 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Mapping,
     Optional,
     Protocol,
     Tuple,
@@ -76,7 +77,14 @@ class ComparisonEvaluator(Protocol):
 
 @dataclass(frozen=True)
 class ScoreRow:
-    """Aligned Champion and Challenger view of one symbol at one event."""
+    """Aligned Champion and Challenger view of one symbol at one event.
+
+    ``champion_structured_explanation`` / ``challenger_structured_explanation``
+    are optional dicts (serialized :class:`~strategy.score_explanation.ScoreExplanation`
+    objects) that describe why each side landed on its score.  When a
+    side lacks a structured explanation, the field is omitted from
+    ``to_dict``.
+    """
 
     symbol: str
     champion_score: Optional[float] = None
@@ -89,9 +97,11 @@ class ScoreRow:
     rank_delta: Optional[int] = None
     champion_explanation: str = ""
     challenger_explanation: str = ""
+    champion_structured_explanation: Optional[Dict[str, Any]] = None
+    challenger_structured_explanation: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload: Dict[str, Any] = {
             "symbol": self.symbol,
             "champion_score": self.champion_score,
             "challenger_score": self.challenger_score,
@@ -104,6 +114,15 @@ class ScoreRow:
             "champion_explanation": self.champion_explanation,
             "challenger_explanation": self.challenger_explanation,
         }
+        if self.champion_structured_explanation is not None:
+            payload["champion_structured_explanation"] = (
+                self.champion_structured_explanation
+            )
+        if self.challenger_structured_explanation is not None:
+            payload["challenger_structured_explanation"] = (
+                self.challenger_structured_explanation
+            )
+        return payload
 
 
 @dataclass
@@ -134,7 +153,11 @@ class ScoreTable:
 
 @dataclass(frozen=True)
 class DisagreementRecord:
-    """One classified difference between Champion and Challenger."""
+    """One classified difference between Champion and Challenger.
+
+    Carries both sides' structured explanations when available so
+    reviewers can trace why each strategy arrived at its score.
+    """
 
     event_timestamp: str
     event_type: str
@@ -149,6 +172,10 @@ class DisagreementRecord:
     score_delta: Optional[float] = None
     rank_delta: Optional[int] = None
     detail: str = ""
+    champion_explanation: str = ""
+    challenger_explanation: str = ""
+    champion_structured_explanation: Optional[Dict[str, Any]] = None
+    challenger_structured_explanation: Optional[Dict[str, Any]] = None
 
     def __post_init__(self) -> None:
         if self.kind not in KNOWN_DISAGREEMENT_KINDS:
@@ -158,7 +185,7 @@ class DisagreementRecord:
             )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload: Dict[str, Any] = {
             "event_timestamp": self.event_timestamp,
             "event_type": self.event_type,
             "symbol": self.symbol,
@@ -172,7 +199,18 @@ class DisagreementRecord:
             "score_delta": self.score_delta,
             "rank_delta": self.rank_delta,
             "detail": self.detail,
+            "champion_explanation": self.champion_explanation,
+            "challenger_explanation": self.challenger_explanation,
         }
+        if self.champion_structured_explanation is not None:
+            payload["champion_structured_explanation"] = (
+                self.champion_structured_explanation
+            )
+        if self.challenger_structured_explanation is not None:
+            payload["challenger_structured_explanation"] = (
+                self.challenger_structured_explanation
+            )
+        return payload
 
 
 @dataclass(frozen=True)
@@ -284,6 +322,48 @@ def _rank_delta(
     if champion_rank is None or challenger_rank is None:
         return None
     return champion_rank - challenger_rank
+
+
+def _summary_from_structured_dict(payload: Mapping[str, Any]) -> str:
+    """Compact one-line summary derived from a serialized
+    :class:`~strategy.score_explanation.ScoreExplanation` dict.
+
+    Mirrors ``ScoreExplanation.to_summary_str`` without needing the
+    class in scope, so ``ComparisonHarness`` stays free of circular
+    imports.
+    """
+    parts: List[str] = []
+    final_score = payload.get("final_score")
+    if isinstance(final_score, (int, float)):
+        parts.append(f"final={float(final_score):.4f}")
+    for component in payload.get("components", []) or []:
+        if not isinstance(component, Mapping):
+            continue
+        name = component.get("name", "?")
+        contribution = component.get("contribution", 0.0)
+        parts.append(f"{name}={float(contribution):+.4f}")
+    for key, label in (
+        ("rs_contribution", "rs"),
+        ("momentum_contribution", "momentum"),
+        ("breadth_contribution", "breadth"),
+    ):
+        value = payload.get(key)
+        if isinstance(value, (int, float)):
+            parts.append(f"{label}={float(value):+.4f}")
+    for reason_key, tag in (("bonuses", "bonus"), ("penalties", "penalty")):
+        for entry in payload.get(reason_key, []) or []:
+            if not isinstance(entry, Mapping):
+                continue
+            reason = entry.get("reason", "?")
+            magnitude = entry.get("magnitude", 0.0)
+            parts.append(f"{tag}[{reason}]={float(magnitude):+.4f}")
+    if payload.get("rejected"):
+        reasons = payload.get("rejection_reasons") or []
+        parts.append("rejected(" + ", ".join(str(r) for r in reasons) + ")")
+    confidence = payload.get("confidence")
+    if isinstance(confidence, (int, float)):
+        parts.append(f"confidence={float(confidence):.2f}")
+    return " | ".join(parts)
 
 
 def _classify_row(
@@ -398,6 +478,23 @@ class ComparisonHarness:
         challenger_ranks = _rank_lookup(challenger_eval)
         symbols = _all_symbols(champion_eval, challenger_eval)
 
+        champion_structured = getattr(
+            champion_eval, "structured_explanations", {}
+        ) or {}
+        challenger_structured = getattr(
+            challenger_eval, "structured_explanations", {}
+        ) or {}
+
+        def _structured_dict(source: Any, sym: str) -> Optional[Dict[str, Any]]:
+            entry = source.get(sym) if hasattr(source, "get") else None
+            if entry is None:
+                return None
+            if hasattr(entry, "to_dict"):
+                return entry.to_dict()
+            if isinstance(entry, dict):
+                return entry
+            return None
+
         rows: List[ScoreRow] = []
         disagreements: List[DisagreementRecord] = []
         for symbol in symbols:
@@ -405,6 +502,20 @@ class ComparisonHarness:
             challenger_score = challenger_eval.scores.get(symbol)
             champion_rank = champion_ranks.get(symbol)
             challenger_rank = challenger_ranks.get(symbol)
+            champion_explanation = champion_eval.explanations.get(symbol, "")
+            challenger_explanation = challenger_eval.explanations.get(symbol, "")
+            champion_struct = _structured_dict(champion_structured, symbol)
+            challenger_struct = _structured_dict(challenger_structured, symbol)
+            # If the free-text is empty but the structured form is populated,
+            # surface the structured summary through the string surface so
+            # downstream reports and analyst prompts never see an empty
+            # explanation while the structured evidence is right there.
+            if not champion_explanation and champion_struct is not None:
+                champion_explanation = _summary_from_structured_dict(champion_struct)
+            if not challenger_explanation and challenger_struct is not None:
+                challenger_explanation = _summary_from_structured_dict(
+                    challenger_struct
+                )
             row = ScoreRow(
                 symbol=symbol,
                 champion_score=champion_score,
@@ -415,8 +526,10 @@ class ComparisonHarness:
                 challenger_selected=symbol in challenger_ranks,
                 score_delta=_score_delta(champion_score, challenger_score),
                 rank_delta=_rank_delta(champion_rank, challenger_rank),
-                champion_explanation=champion_eval.explanations.get(symbol, ""),
-                challenger_explanation=challenger_eval.explanations.get(symbol, ""),
+                champion_explanation=champion_explanation,
+                challenger_explanation=challenger_explanation,
+                champion_structured_explanation=champion_struct,
+                challenger_structured_explanation=challenger_struct,
             )
             rows.append(row)
             classification = _classify_row(row, self._threshold)
@@ -437,6 +550,10 @@ class ComparisonHarness:
                         score_delta=row.score_delta,
                         rank_delta=row.rank_delta,
                         detail=detail,
+                        champion_explanation=row.champion_explanation,
+                        challenger_explanation=row.challenger_explanation,
+                        champion_structured_explanation=champion_struct,
+                        challenger_structured_explanation=challenger_struct,
                     )
                 )
 

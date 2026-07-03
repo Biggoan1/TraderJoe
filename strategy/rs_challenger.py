@@ -34,6 +34,11 @@ from strategy.backtest_lab import BacktestEvent, StrategyEvaluation
 from strategy.comparison_harness import ComparisonEvaluator
 from strategy.config import FeatureFlags, get_feature_flags
 from strategy.relative_strength import relative_return_pct
+from strategy.score_explanation import (
+    ScoreExplanation,
+    append_overlay_component,
+    blank_explanation,
+)
 
 
 RS_CHALLENGER_STRATEGY_ID = "rs-challenger-v0.1.0"
@@ -108,6 +113,7 @@ class RelativeStrengthChallenger:
     # -- internals ----------------------------------------------------------
 
     def _passthrough(self, base: StrategyEvaluation) -> StrategyEvaluation:
+        base_structured = getattr(base, "structured_explanations", {}) or {}
         return StrategyEvaluation(
             strategy_id=self.strategy_id,
             event_timestamp=base.event_timestamp,
@@ -115,6 +121,7 @@ class RelativeStrengthChallenger:
             rankings=[dict(entry) for entry in base.rankings],
             explanations=dict(base.explanations),
             warnings=list(base.warnings),
+            structured_explanations=dict(base_structured),
         )
 
     def _apply_overlay(
@@ -124,10 +131,13 @@ class RelativeStrengthChallenger:
         explanations: Dict[str, str] = dict(base.explanations)
         warnings: List[str] = list(base.warnings)
         missing: List[str] = []
+        base_structured = getattr(base, "structured_explanations", {}) or {}
+        structured: Dict[str, ScoreExplanation] = {}
 
         for symbol in sorted(base.scores):
             base_score = base.scores[symbol]
             rs_value = self._safe_fetch(symbol, event, warnings)
+            base_exp = base_structured.get(symbol)
             if rs_value is None:
                 new_scores[symbol] = base_score
                 missing.append(symbol)
@@ -137,6 +147,24 @@ class RelativeStrengthChallenger:
                     rs_value=None,
                     contribution=0.0,
                 )
+                if base_exp is not None:
+                    structured[symbol] = append_overlay_component(
+                        base_exp,
+                        overlay_strategy_id=self.strategy_id,
+                        component_name="rs_overlay",
+                        contribution=0.0,
+                        detail="rs data unavailable — challenger fell back to base",
+                        rs_value=None,
+                        notes=("rs_data_missing",),
+                    )
+                else:
+                    structured[symbol] = blank_explanation(
+                        self.strategy_id,
+                        symbol,
+                        base.event_timestamp,
+                        base_score,
+                        note="rs data unavailable and no base explanation",
+                    )
                 continue
             contribution = self._contribution(rs_value)
             new_scores[symbol] = base_score + contribution
@@ -146,6 +174,27 @@ class RelativeStrengthChallenger:
                 rs_value=rs_value,
                 contribution=contribution,
             )
+            detail = (
+                f"rs={rs_value:.2f} weight={self.overlay_weight} "
+                f"neutral={self.neutral_score}"
+            )
+            if base_exp is not None:
+                structured[symbol] = append_overlay_component(
+                    base_exp,
+                    overlay_strategy_id=self.strategy_id,
+                    component_name="rs_overlay",
+                    contribution=contribution,
+                    detail=detail,
+                    rs_value=rs_value,
+                )
+            else:
+                structured[symbol] = blank_explanation(
+                    self.strategy_id,
+                    symbol,
+                    base.event_timestamp,
+                    new_scores[symbol],
+                    note=detail,
+                )
 
         if missing:
             warnings.append(
@@ -162,6 +211,7 @@ class RelativeStrengthChallenger:
             rankings=rankings,
             explanations=explanations,
             warnings=warnings,
+            structured_explanations=structured,
         )
 
     def _safe_fetch(

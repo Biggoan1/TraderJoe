@@ -86,7 +86,22 @@ from strategy.comparison_harness import (
     ScoreRow,
     ScoreTable,
 )
+from strategy.champion_scoring import (
+    ChampionScorer,
+    ChampionScoringConfig,
+    RESEARCH_CHAMPION_STRATEGY_ID,
+    score_bars_for_event,
+)
 from strategy.relative_strength import relative_return_pct
+from strategy.score_explanation import (
+    SCORE_EXPLANATION_KIND,
+    ScoreComponent,
+    ScoreExplanation,
+    aggregate_explanation_dicts,
+    append_overlay_component,
+    blank_explanation,
+    summarize_explanations,
+)
 from strategy.rs_challenger import (
     DEFAULT_RS_FULLSCALE_PP,
     DEFAULT_RS_LOOKBACK_DAYS,
@@ -327,6 +342,17 @@ __all__ = [
     "build_rs_map_from_bars",
     "relative_return_pct",
     "rs_provider_from_map",
+    "ChampionScorer",
+    "ChampionScoringConfig",
+    "RESEARCH_CHAMPION_STRATEGY_ID",
+    "SCORE_EXPLANATION_KIND",
+    "ScoreComponent",
+    "ScoreExplanation",
+    "aggregate_explanation_dicts",
+    "append_overlay_component",
+    "blank_explanation",
+    "score_bars_for_event",
+    "summarize_explanations",
     "WalkForwardPipeline",
     "WalkForwardReport",
     "WalkForwardSchedule",
