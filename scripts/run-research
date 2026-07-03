@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# scripts/run-research — launch a research/replay/validation task
+# against the .env.research context.
+#
+# Loads ONLY .env.research.  Never sources .env or .env.production.
+# The Research Alpaca account is read-only; see
+# docs/agent/env-isolation.md and strategy/research_account.py.
+
+set -euo pipefail
+
+CONTEXT="research"
+ENV_FILE=".env.research"
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "ERROR: $ENV_FILE not found in $(pwd)" >&2
+  echo "       Copy the .env.research section from .env.example and populate it." >&2
+  exit 1
+fi
+
+# Load ONLY .env.research into the environment.
+set -a
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+set +a
+
+export HERMES_CONTEXT="$CONTEXT"
+
+# No dedicated research runner exists yet — see t_phase5_two_month_validation_run.
+# With no args, run a fail-fast config check via ResearchAccountConfig.from_env().
+if [ "$#" -eq 0 ]; then
+  exec python -c "from strategy.research_account import ResearchAccountConfig; ResearchAccountConfig.from_env(); print('research env OK')"
+fi
+
+exec python "$@"

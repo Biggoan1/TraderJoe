@@ -47,7 +47,11 @@ load_dotenv(".env")
 # ---------------------------------------------------------------------------
 PAPER = True
 AGENT_NAME = "Trader Joe"
-AI_MODEL = "gpt-5-mini"
+from strategy.model_config import CONTEXT_PAPER as _MODEL_CONTEXT, resolve_model
+# Legacy default preserves the pre-env-var behavior; env override wins
+# via PAPER_AI_MODEL. See docs/agent/env-isolation.md.
+_LEGACY_MODEL_DEFAULT = "gpt-5-mini"
+AI_MODEL = resolve_model(_MODEL_CONTEXT, default=_LEGACY_MODEL_DEFAULT)
 DB_FILE = "trades.db"
 COOLDOWN_MINUTES = 30  # Don't re-buy a symbol for 30 min after selling it
 

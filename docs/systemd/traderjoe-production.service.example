@@ -1,0 +1,67 @@
+# ==============================================================================
+# ⚠  Trader Joe — PRODUCTION SERVICE (REAL MONEY)  ⚠
+# ==============================================================================
+#
+# This file intentionally ends in `.service.example` so systemd will NOT
+# load it.  It is a TEMPLATE, not an installable unit.
+#
+#   PRODUCTION MEANS REAL MONEY.
+#   PRODUCTION MEANS REAL ORDERS.
+#   PRODUCTION MEANS REAL LOSSES ARE POSSIBLE.
+#
+# Do NOT rename this file to `traderjoe-production.service` and do NOT
+# copy it into /etc/systemd/system/ until ALL of the following hold:
+#
+#   1. An ApprovalRecord (see strategy/promotion_gates.py) exists in an
+#      operations record naming approver, dated approval, flag scope,
+#      monitoring dashboard, and rollback plan.
+#   2. The relevant PromotionEntry sits at STATE_APPROVED or
+#      STATE_PRODUCTION with no triggered rollback alerts across
+#      STANDARD_ROLLBACK_CRITERIA.
+#   3. Walk-forward + paper-trading + Phase 5 two-month historical
+#      validation evidence per ROADMAP "v1.0 Production Readiness"
+#      passes.
+#   4. `.env.production` has been populated with the approved
+#      credentials — the file MUST be empty until then.
+#   5. `PAPER = True` in trader.py has been flipped to False in the
+#      SAME commit that installs this service.
+#   6. A rollback drill has been executed and documented within the
+#      last 30 days.
+#   7. The approving ApprovalRecord id is cited in the deployment
+#      change record.
+#
+# Layered guards below (all three must be defeated to reach a live
+# order):
+#
+#   • ConditionPathExists refuses to start unless a marker file is
+#     manually created after approval.
+#   • ExecStart=/bin/false makes the unit exit 1 even if it starts.
+#     Replace with the real launcher (which does not yet exist in this
+#     repo) only in the approved commit.
+#   • The [Install] section is intentionally OMITTED so `systemctl
+#     enable` fails until an operator adds it explicitly, forcing a
+#     conscious decision.
+#
+# See docs/agent/env-isolation.md and ROADMAP.md "v1.0 Production
+# Readiness".
+# ==============================================================================
+
+[Unit]
+Description=Trader Joe — PRODUCTION (REAL MONEY — DO NOT INSTALL UNTIL APPROVED)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/traderjoe/PRODUCTION_APPROVED
+
+[Service]
+Type=simple
+WorkingDirectory=/root/hermes-trader
+EnvironmentFile=/root/hermes-trader/.env.production
+Environment=HERMES_CONTEXT=production
+# No scripts/run-production launcher exists on purpose.  Replace this
+# line ONLY in the approved commit that satisfies the checklist above.
+ExecStart=/bin/false
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+# [Install] section intentionally omitted — see the header.

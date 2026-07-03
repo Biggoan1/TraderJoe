@@ -1,0 +1,24 @@
+# Trader Joe — crypto paper trading / testing
+#
+# Example systemd unit.  Copy to /etc/systemd/system/ to install.
+# Update WorkingDirectory / EnvironmentFile / User to match your host.
+# See docs/agent/env-isolation.md for isolation rules.
+
+[Unit]
+Description=Trader Joe — crypto paper trading
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/hermes-trader
+EnvironmentFile=/root/hermes-trader/.env.crypto
+Environment=HERMES_CONTEXT=crypto
+ExecStart=/root/hermes-trader/scripts/run-crypto
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

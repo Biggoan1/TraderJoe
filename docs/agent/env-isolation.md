@@ -174,3 +174,87 @@ must.
 knows how to read. Every value is a placeholder. Contributors copy
 the sections they need into the appropriate `.env.<context>` file
 and populate them locally.
+
+---
+
+## Launcher scripts
+
+`scripts/run-paper`, `scripts/run-crypto`, and `scripts/run-research`
+load exactly one env file each and exec the matching entrypoint.
+
+| Launcher | Env file loaded | Exec target |
+|---|---|---|
+| `scripts/run-paper` | `.env.paper` | `python trader.py "$@"` |
+| `scripts/run-crypto` | `.env.crypto` | `python crypto_trader.py "$@"` |
+| `scripts/run-research` | `.env.research` | `python "$@"` (default: `ResearchAccountConfig.from_env()` self-check) |
+
+Guarantees enforced by every launcher:
+
+- Refuses to run if the target env file is missing.
+- Never sources `.env`.
+- Never sources `.env.production`.
+- Loads its own env file with `set -a; . "$ENV_FILE"; set +a` so
+  every variable is exported.
+- Sets `HERMES_CONTEXT=<paper|crypto|research>` so downstream code
+  can assert it is running under the expected context.
+- Preserves positional arguments via `"$@"`.
+
+There is intentionally no `scripts/run-production`.  A live-trading
+launcher must ship in the same commit that satisfies the
+Production Safeguards below.
+
+## systemd examples
+
+Under `docs/systemd/`:
+
+- `traderjoe-paper.service`
+- `traderjoe-crypto.service`
+- `traderjoe-research.service`
+- `traderjoe-production.service.example`  ← template only, not
+  installable
+
+Each real unit uses `EnvironmentFile=` pointing at the matching
+`.env.<context>` and `Environment=HERMES_CONTEXT=<context>`.
+
+The production template ends in `.service.example` so systemd will
+not load it, `ExecStart=/bin/false` so even a mistakenly-renamed
+copy exits non-zero, `ConditionPathExists=/etc/traderjoe/PRODUCTION_APPROVED`
+so it refuses to start until an operator manually creates the marker
+file, and the `[Install]` section is omitted so `systemctl enable`
+fails until the operator adds it deliberately.
+
+---
+
+## AI model configuration
+
+Each context has its own model env var; there is no shared
+"active model" variable and Hermes is not assumed to export one.
+
+| Context | Env var |
+|---|---|
+| Paper | `PAPER_AI_MODEL` |
+| Crypto | `CRYPTO_AI_MODEL` |
+| Research | `RESEARCH_AI_MODEL` |
+| Production | `PRODUCTION_AI_MODEL` |
+
+Model selection is resolved by
+`strategy.model_config.resolve_model(context, explicit=None,
+default=None, env=None)` with the following precedence:
+
+1. Explicit caller-provided value (highest priority).
+2. Context-specific env var
+   (`CONTEXT_MODEL_ENV[context]`).
+3. Caller-provided default (may be `None`).
+
+The resolver never hardcodes a model name.  Existing callers
+(`trader.py`, `crypto_trader.py`) preserve their pre-env-var default
+via a local `_LEGACY_MODEL_DEFAULT` fallback so nothing regresses
+when the env var is unset.
+
+### Hermes routing note
+
+Future Hermes integration may pass an explicit model argument
+through the `explicit=` parameter of `resolve_model`.  Do NOT assume
+Hermes exports a shared model env var — the resolver deliberately
+supports explicit arguments so Hermes can hand a specific model to a
+specific call without polluting the process environment.

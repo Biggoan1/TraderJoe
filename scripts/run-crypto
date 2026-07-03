@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# scripts/run-crypto — launch crypto_trader.py against the .env.crypto context.
+#
+# Loads ONLY .env.crypto.  Never sources .env or .env.production.
+# See docs/agent/env-isolation.md for the isolation contract.
+
+set -euo pipefail
+
+CONTEXT="crypto"
+ENV_FILE=".env.crypto"
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "ERROR: $ENV_FILE not found in $(pwd)" >&2
+  echo "       Copy the .env.crypto section from .env.example and populate it." >&2
+  exit 1
+fi
+
+# Load ONLY .env.crypto into the environment.
+set -a
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+set +a
+
+export HERMES_CONTEXT="$CONTEXT"
+
+exec python crypto_trader.py "$@"

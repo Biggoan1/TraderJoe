@@ -1,0 +1,24 @@
+# Trader Joe — paper trading (equities)
+#
+# Example systemd unit.  Copy to /etc/systemd/system/ to install.
+# Update WorkingDirectory / EnvironmentFile / User to match your host.
+# See docs/agent/env-isolation.md for isolation rules.
+
+[Unit]
+Description=Trader Joe — paper trading (equities)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/hermes-trader
+EnvironmentFile=/root/hermes-trader/.env.paper
+Environment=HERMES_CONTEXT=paper
+ExecStart=/root/hermes-trader/scripts/run-paper
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

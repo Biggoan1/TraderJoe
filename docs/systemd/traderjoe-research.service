@@ -1,0 +1,24 @@
+# Trader Joe — historical validation / replay / research
+#
+# Example systemd unit for a periodic research run.  Copy to
+# /etc/systemd/system/ to install.  Update WorkingDirectory /
+# EnvironmentFile / User to match your host.
+#
+# The Research Alpaca account is read-only; see
+# docs/agent/env-isolation.md and strategy/research_account.py.
+# Research is not a long-running service — most operators pair this
+# with a matching .timer unit that fires on a schedule.
+
+[Unit]
+Description=Trader Joe — research (validation / replay)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/hermes-trader
+EnvironmentFile=/root/hermes-trader/.env.research
+Environment=HERMES_CONTEXT=research
+ExecStart=/root/hermes-trader/scripts/run-research
+StandardOutput=journal
+StandardError=journal

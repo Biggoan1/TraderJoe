@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# scripts/run-paper — launch trader.py against the .env.paper context.
+#
+# Loads ONLY .env.paper.  Never sources .env or .env.production.
+# See docs/agent/env-isolation.md for the isolation contract.
+
+set -euo pipefail
+
+CONTEXT="paper"
+ENV_FILE=".env.paper"
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "ERROR: $ENV_FILE not found in $(pwd)" >&2
+  echo "       Copy the .env.paper section from .env.example and populate it." >&2
+  exit 1
+fi
+
+# Load ONLY .env.paper into the environment.
+set -a
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+set +a
+
+export HERMES_CONTEXT="$CONTEXT"
+
+exec python trader.py "$@"
