@@ -1477,6 +1477,152 @@ Done)
 
 ---
 
+## Phase 5.6 — Historical Data Warehouse
+
+**Status:** PLANNED (design only — no production code, no live-path changes)
+
+**Objective:** Make Trader Joe completely independent of any single
+market-data provider by treating historical data as an immutable,
+versioned, locally-owned research asset.  The replay engine should
+always prefer the local warehouse and only contact an external
+provider when the warehouse has a gap AND policy permits.
+
+**Design deliverable:**
+[`docs/architecture/phase-5-6-historical-warehouse.md`](docs/architecture/phase-5-6-historical-warehouse.md)
+carries the full architectural design.  This roadmap section is a
+pointer, not a duplicate.
+
+**Motivation:** the first live 60-day validation (commit `f46a548`)
+surfaced that 60 calendar days of Alpaca daily bars yields only
+~42 trading-day bars, so the champion's SMA(50) scorer rejected
+every event with `insufficient_history: have=X need>=51`.  The
+Research Analyst correctly diagnosed it.  Rather than patch the
+symptom (widen the fetch window), Phase 5.6 fixes the shape:
+research runs read from a warehouse the operator owns, not from
+whatever the provider happens to serve that day.
+
+**Placement rationale:** placed after Phase 5.5 (which produces
+the dashboard that will later render warehouse status) and before
+Phase 6 (which begins the promotion toward live trading).  Phase
+5.6 is not a v1.0 gate; production readiness does not depend on
+the warehouse existing.  But it is a durability gate: v1.0 with a
+provider-tethered research surface is a v1.0 that breaks the day
+Alpaca changes their pricing model.
+
+**Storage recommendation (rationale in design doc):** hybrid
+architecture — Parquet for immutable bar archives (columnar,
+compressed, portable), DuckDB as the analytical query engine
+(reads Parquet directly, zero server ops), SQLite for metadata
+(symbols, calendars, splits, dividends, exchanges — the small
+transactional surface Parquet handles poorly), JSON manifests
+extending the existing Phase 3 `strategy/data_catalog.py`
+convention.
+
+### Design Objectives Covered
+
+1. `MarketDataProvider` interface — Protocol supporting
+   `fetch_daily_bars`, `fetch_intraday_bars`,
+   `fetch_corporate_actions`, `fetch_symbol_metadata`,
+   `fetch_calendar`, `provider_capabilities`.  Plugin roster:
+   Alpaca, Polygon, Databento, Tiingo, FMP, Alpha Vantage, CSV,
+   Parquet, manual.
+2. Local Historical Warehouse — `market_data/` tree with
+   equities / crypto / options partitions.
+3. Data Catalog — extension of `strategy/data_catalog.py` with
+   provider, adjustment version, checksum, validation status.
+4. Gap Detection — missing days, partial days, bad checksums,
+   DST anomalies, holiday mismatches — as research artifacts.
+5. Incremental Sync — nightly append-only pulls; never
+   overwrites existing history.
+6. Provider Priority — configurable, warehouse-always-first;
+   research runs default to warehouse-only.
+7. Import Pipeline — bulk provider pulls, ZIP / Parquet / CSV
+   imports, manifest rebuild, checkpointed resumption.
+8. Research Cache — validated datasets are immutable; corporate
+   action revisions create new versions with lineage.
+9. Corporate Actions — splits, reverse splits, dividends,
+   special dividends, ticker changes, delistings, mergers;
+   both raw and adjusted variants preserved.
+10. Validation — sha256, OHLCV sanity, timezone, calendar,
+    duplicate detection, cross-check with splits/dividends
+    tables.
+11. Future Scale — 20+ years, thousands of symbols, minute bars
+    without redesign.
+12. Integration — `ResearchAccountClient` becomes one provider
+    plugin; `HistoricalValidation` gains a `WarehouseReader`
+    that consults the warehouse first; walk-forward unchanged;
+    analyst payload gains dataset provenance; dashboard gets a
+    warehouse view; promotion evidence pins by version.
+13. Operational goal — acquire once, validate once, store
+    forever, research forever; providers become acquisition
+    tools only.
+
+### Kanban Breakdown
+
+Twelve implementation cards, each independently testable,
+reversible, read-only:
+
+- `t_phase56_provider_interface` — Protocol + dataclasses + tests.
+- `t_phase56_local_warehouse` — directory layout, immutability
+  enforcement, `WarehouseIntegrityError`.
+- `t_phase56_catalog` — extension of `strategy/data_catalog.py`.
+- `t_phase56_parquet_storage` — bar writer/reader in canonical
+  schema, Zstd config.
+- `t_phase56_duckdb_queries` — DuckDB query layer joining
+  Parquet + SQLite metadata.
+- `t_phase56_data_versioning` — version chain with lineage.
+- `t_phase56_validation` — integrity validator + `GapReport`
+  producer.
+- `t_phase56_gap_detection` — scanner + artifact writer.
+- `t_phase56_provider_plugins` — Alpaca (wraps
+  `ResearchAccountClient`), CSV, Parquet plugins.
+- `t_phase56_import_pipeline` — bulk-import runners, resumable.
+- `t_phase56_incremental_sync` — `warehouse-sync` nightly runner.
+- `t_phase56_research_cache` — `WarehouseReader` with
+  provider-priority fallback and version pinning.
+
+Full dependency matrix, per-card definition of done, validation
+criteria, and out-of-scope carve-outs are in the design doc.
+
+### Read-only guarantees (mandatory for every Phase 5.6 card)
+
+- No warehouse module imports `trader`, `crypto_trader`,
+  `trader_cli`, `telegram_approvals`, or `strategy.runner`.
+- `WAREHOUSE_*` env namespace disjoint from `ALPACA_*`,
+  `APCA_*`, `RESEARCH_ALPACA_*`, `CRYPTO_ALPACA_*`.
+- `FeatureFlags.all_disabled == True` before and after every test.
+- No `ApprovalRecord` construction.
+- `PromotionEntry.current_state` never advances.
+- Terminology: validation, replay, research, acquisition — never
+  "training".
+
+### Definition of Done for Phase 5.6
+
+- All twelve implementation cards in Review or Done.
+- Warehouse populated with at least one provider's full daily
+  history for the current watchlist + benchmarks (SPY, QQQ).
+- `HistoricalValidation` live-fetch consumes the warehouse first;
+  unit test asserts `ResearchAccountClient.fetch_bars` is not
+  called when warehouse coverage is complete.
+- Gap detection produces a zero-unexplained-gap report.
+- **Offline test:** with `RESEARCH_ALPACA_*` env vars unset and
+  provider plugins disabled, a full 60-day validation completes
+  successfully and produces byte-identical artifacts to the
+  online version.
+- Analyst narrative includes a `dataset_provenance` block citing
+  the warehouse dataset IDs and versions.
+
+### Explicitly out of scope
+
+- Options data (Phase 6+).
+- Futures data (Phase 6+).
+- Realtime streaming (Phase 6+).
+- Cross-provider comparison studies (follow-up card).
+- Dashboard UI additions — Phase 5.5's territory.
+- Populating `.env.production` — Phase 6.
+
+---
+
 ## Phase 6 — Production Readiness
 
 **Status:** PLANNED (v1.0 definition captured)
