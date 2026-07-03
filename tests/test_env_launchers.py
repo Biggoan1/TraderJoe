@@ -16,7 +16,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 import pytest
 
@@ -140,17 +140,40 @@ class TestLauncherSourcesOnlyMatchingEnvFile:
     def test_script_never_sources_env_production(self, script):
         source = _script(script)
         code = _strip_shell_comments(source)
-        assert ".env.production" not in code, (
-            f"{script} must not reference .env.production outside a comment"
-        )
+        # Forbid patterns that would LOAD .env.production, not
+        # patterns that REFUSE it (run-research has an explicit
+        # `case` refusal for --env-file paths that resolve to
+        # .env.production, and that must remain).
+        forbidden_load_patterns = [
+            r"source\s+[^\n]*\.env\.production",
+            r"\.\s+[^\n]*\.env\.production",
+            r"ENV_FILE\s*=\s*[\"']?\.env\.production",
+            r"DEFAULT_ENV_FILENAME\s*=\s*[\"']?\.env\.production",
+        ]
+        for pattern in forbidden_load_patterns:
+            assert not re.search(pattern, code), (
+                f"{script} must not load .env.production "
+                f"(matched pattern: {pattern!r})"
+            )
 
     @pytest.mark.parametrize("script", list(LAUNCHER_MATRIX))
     def test_script_never_sources_bare_dotenv(self, script):
         source = _script(script)
-        bad_lines = _matches_bare_env_reference(source)
-        assert not bad_lines, (
-            f"{script} references a bare `.env` file: {bad_lines}"
-        )
+        code = _strip_shell_comments(source)
+        # Forbid patterns that would LOAD a bare `.env`, not patterns
+        # that REFUSE it (run-research has a case refusal for
+        # --env-file paths that resolve to a bare .env).
+        forbidden_load_patterns = [
+            r"source\s+[\"']?\.env[\"']?(?![.\w])",
+            r"\.\s+[\"']?\.env[\"']?(?![.\w])",
+            r"ENV_FILE\s*=\s*[\"']?\.env[\"']?(?![.\w])",
+            r"DEFAULT_ENV_FILENAME\s*=\s*[\"']?\.env[\"']?(?![.\w])",
+        ]
+        for pattern in forbidden_load_patterns:
+            assert not re.search(pattern, code), (
+                f"{script} must not load a bare `.env` "
+                f"(matched pattern: {pattern!r})"
+            )
 
     @pytest.mark.parametrize(
         "script,other",
@@ -195,6 +218,24 @@ class TestLauncherExportsContextMarker:
         )
 
 
+def _stage_fake_repo(tmp_path: Path, script: str) -> Tuple[Path, Path]:
+    """Copy a launcher into an isolated fake-repo tree.
+
+    Returns ``(fake_repo_root, fake_script_path)``.  The fake repo has
+    no ``.env.<context>`` files anywhere, so the launcher's
+    ``REPO_ROOT`` search hits an empty directory and exits with the
+    documented error.
+    """
+    fake_repo = tmp_path / "fake_repo"
+    fake_scripts = fake_repo / "scripts"
+    fake_scripts.mkdir(parents=True)
+    src = REPO_ROOT / "scripts" / script
+    dst = fake_scripts / script
+    dst.write_bytes(src.read_bytes())
+    dst.chmod(0o755)
+    return fake_repo, dst
+
+
 class TestLauncherRefusesMissingEnvFile:
     @pytest.mark.parametrize(
         "script,env_file",
@@ -203,11 +244,16 @@ class TestLauncherRefusesMissingEnvFile:
     def test_missing_env_file_exits_nonzero(
         self, script, env_file, tmp_path
     ):
-        # Run in a tmp cwd so the target env file is missing.
-        script_path = REPO_ROOT / "scripts" / script
+        # Isolate the launcher in a fake repo so the REPO_ROOT
+        # fallback also fails to find the env file.  The launcher
+        # searches cwd first, then REPO_ROOT — both empty here.
+        fake_repo, fake_script = _stage_fake_repo(tmp_path, script)
+        run_cwd = tmp_path / "cwd"
+        run_cwd.mkdir()
+
         result = subprocess.run(
-            ["bash", str(script_path)],
-            cwd=tmp_path,
+            ["bash", str(fake_script)],
+            cwd=run_cwd,
             capture_output=True,
             text=True,
         )
@@ -217,6 +263,210 @@ class TestLauncherRefusesMissingEnvFile:
         assert env_file in result.stderr, (
             f"{script} did not name the missing env file in stderr"
         )
+
+
+# ---------------------------------------------------------------------------
+# run-research env-file discovery
+# ---------------------------------------------------------------------------
+
+
+RESEARCH_FIXTURE_ENV_LINES = "\n".join(
+    [
+        "RESEARCH_ALPACA_API_KEY=test-api-key",
+        "RESEARCH_ALPACA_SECRET_KEY=test-secret-key",
+        "RESEARCH_ALPACA_ENDPOINT=https://research.example",
+        "",
+    ]
+)
+
+
+def _stage_research_fake_repo(tmp_path: Path) -> Tuple[Path, Path]:
+    """Stage `run-research` inside a fake repo tree with NO env files."""
+    return _stage_fake_repo(tmp_path, "run-research")
+
+
+def _write_env_file(path: Path, extra: str = "") -> None:
+    path.write_text(RESEARCH_FIXTURE_ENV_LINES + extra, encoding="utf-8")
+
+
+def _run_research(
+    fake_script: Path,
+    cwd: Path,
+    args: Sequence[str] = (),
+) -> subprocess.CompletedProcess:
+    """Run the launcher and forward an inline ``print('OK')`` to
+    python by default so the exec at the end lands on something
+    self-contained (no PYTHONPATH required).
+    """
+    forwarded = list(args) or ["-c", "print('research-launch OK')"]
+    return subprocess.run(
+        ["bash", str(fake_script), *forwarded],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+
+
+class TestRunResearchEnvDiscovery:
+    def test_launched_from_repo_root_finds_env_file_there(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        _write_env_file(fake_repo / ".env.research")
+
+        result = _run_research(fake_script, cwd=fake_repo)
+        assert result.returncode == 0, result.stderr
+        assert "research-launch OK" in result.stdout
+
+    def test_launched_from_scripts_dir_finds_env_at_repo_root(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        _write_env_file(fake_repo / ".env.research")
+        scripts_dir = fake_repo / "scripts"
+
+        result = _run_research(fake_script, cwd=scripts_dir)
+        assert result.returncode == 0, result.stderr
+
+    def test_launched_from_unrelated_dir_still_finds_env_at_repo_root(
+        self, tmp_path
+    ):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        _write_env_file(fake_repo / ".env.research")
+        unrelated = tmp_path / "elsewhere"
+        unrelated.mkdir()
+
+        result = _run_research(fake_script, cwd=unrelated)
+        assert result.returncode == 0, result.stderr
+
+    def test_cwd_env_file_wins_over_repo_root(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        # Repo-root env file has a specific marker
+        _write_env_file(
+            fake_repo / ".env.research",
+            extra="RESEARCH_ENV_SOURCE=repo-root\n",
+        )
+        # A cwd env file has a different marker
+        cwd_dir = tmp_path / "workspace"
+        cwd_dir.mkdir()
+        _write_env_file(
+            cwd_dir / ".env.research",
+            extra="RESEARCH_ENV_SOURCE=cwd\n",
+        )
+
+        result = _run_research(
+            fake_script,
+            cwd=cwd_dir,
+            args=["-c", "import os; print(os.environ['RESEARCH_ENV_SOURCE'])"],
+        )
+        assert result.returncode == 0, result.stderr
+        assert "cwd" in result.stdout
+
+    def test_custom_env_file_wins_over_cwd_and_repo_root(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        _write_env_file(
+            fake_repo / ".env.research",
+            extra="RESEARCH_ENV_SOURCE=repo-root\n",
+        )
+        cwd_dir = tmp_path / "workspace"
+        cwd_dir.mkdir()
+        _write_env_file(
+            cwd_dir / ".env.research",
+            extra="RESEARCH_ENV_SOURCE=cwd\n",
+        )
+        custom = tmp_path / "custom.research"
+        _write_env_file(custom, extra="RESEARCH_ENV_SOURCE=custom\n")
+
+        result = _run_research(
+            fake_script,
+            cwd=cwd_dir,
+            args=[
+                "--env-file",
+                str(custom),
+                "-c",
+                "import os; print(os.environ['RESEARCH_ENV_SOURCE'])",
+            ],
+        )
+        assert result.returncode == 0, result.stderr
+        assert "custom" in result.stdout
+
+    def test_custom_env_file_equals_form(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        custom = tmp_path / "custom.research"
+        _write_env_file(custom, extra="RESEARCH_ENV_SOURCE=eq-form\n")
+
+        result = _run_research(
+            fake_script,
+            cwd=tmp_path,
+            args=[
+                f"--env-file={custom}",
+                "-c",
+                "import os; print(os.environ['RESEARCH_ENV_SOURCE'])",
+            ],
+        )
+        assert result.returncode == 0, result.stderr
+        assert "eq-form" in result.stdout
+
+    def test_custom_env_file_missing_reports_all_locations(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        # Nothing at custom, cwd, or repo root.
+        result = _run_research(
+            fake_script,
+            cwd=tmp_path,
+            args=["--env-file", str(tmp_path / "does_not_exist.research")],
+        )
+        assert result.returncode != 0
+        assert "--env-file" in result.stderr
+        assert "cwd" in result.stderr
+        assert "repo root" in result.stderr
+        assert ".env.research" in result.stderr
+
+    def test_env_file_flag_without_value_errors(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        result = _run_research(
+            fake_script, cwd=tmp_path, args=["--env-file"]
+        )
+        assert result.returncode != 0
+        assert "requires a path" in result.stderr
+
+    def test_refuses_env_file_named_dotenv(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        bare = tmp_path / ".env"
+        _write_env_file(bare)
+        result = _run_research(
+            fake_script, cwd=tmp_path, args=["--env-file", str(bare)]
+        )
+        assert result.returncode != 0
+        assert "refusing to load .env" in result.stderr
+
+    def test_refuses_env_file_named_dotenv_production(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        prod = tmp_path / ".env.production"
+        _write_env_file(prod)
+        result = _run_research(
+            fake_script, cwd=tmp_path, args=["--env-file", str(prod)]
+        )
+        assert result.returncode != 0
+        assert "refusing to load .env.production" in result.stderr
+
+    def test_never_falls_back_to_bare_dotenv(self, tmp_path):
+        """A `.env` file at the repo root must not be loaded by
+        run-research even when .env.research is absent.  The launcher
+        should error out with the "not found" message.
+        """
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        # Populate a stray .env (attacker or misconfiguration case)
+        (fake_repo / ".env").write_text(
+            "SHOULD_NOT_BE_LOADED=yes\n", encoding="utf-8"
+        )
+        result = _run_research(fake_script, cwd=fake_repo)
+        assert result.returncode != 0
+        assert ".env.research" in result.stderr
+
+    def test_never_falls_back_to_dotenv_production(self, tmp_path):
+        fake_repo, fake_script = _stage_research_fake_repo(tmp_path)
+        (fake_repo / ".env.production").write_text(
+            "SHOULD_NOT_BE_LOADED=yes\n", encoding="utf-8"
+        )
+        result = _run_research(fake_script, cwd=fake_repo)
+        assert result.returncode != 0
+        assert ".env.research" in result.stderr
 
 
 # ---------------------------------------------------------------------------

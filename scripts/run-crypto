@@ -3,15 +3,44 @@
 #
 # Loads ONLY .env.crypto.  Never sources .env or .env.production.
 # See docs/agent/env-isolation.md for the isolation contract.
+#
+# Works from any working directory: the script derives the repo
+# root from its own location and falls back to it when the env
+# file is not present in the current working directory.
 
 set -euo pipefail
 
 CONTEXT="crypto"
-ENV_FILE=".env.crypto"
+DEFAULT_ENV_FILENAME=".env.crypto"
 
-if [ ! -f "$ENV_FILE" ]; then
-  echo "ERROR: $ENV_FILE not found in $(pwd)" >&2
-  echo "       Copy the .env.crypto section from .env.example and populate it." >&2
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Search order: current working directory, then repo root.
+CHECKED_LOCATIONS=()
+ENV_FILE=""
+
+CWD_CANDIDATE="./$DEFAULT_ENV_FILENAME"
+CHECKED_LOCATIONS+=("$CWD_CANDIDATE (cwd: $(pwd))")
+if [ -f "$CWD_CANDIDATE" ]; then
+  ENV_FILE="$CWD_CANDIDATE"
+fi
+
+if [ -z "$ENV_FILE" ]; then
+  REPO_CANDIDATE="$REPO_ROOT/$DEFAULT_ENV_FILENAME"
+  CHECKED_LOCATIONS+=("$REPO_CANDIDATE (repo root)")
+  if [ -f "$REPO_CANDIDATE" ]; then
+    ENV_FILE="$REPO_CANDIDATE"
+  fi
+fi
+
+if [ -z "$ENV_FILE" ]; then
+  echo "ERROR: $DEFAULT_ENV_FILENAME not found. Checked:" >&2
+  for location in "${CHECKED_LOCATIONS[@]}"; do
+    echo "  - $location" >&2
+  done
+  echo "" >&2
+  echo "Copy the $DEFAULT_ENV_FILENAME section from .env.example and populate it." >&2
   exit 1
 fi
 

@@ -5,19 +5,111 @@
 # Loads ONLY .env.research.  Never sources .env or .env.production.
 # The Research Alpaca account is read-only; see
 # docs/agent/env-isolation.md and strategy/research_account.py.
+#
+# Works from any working directory: the script derives the repo
+# root from its own location and searches for the env file in a
+# defined order.
 
 set -euo pipefail
 
 CONTEXT="research"
-ENV_FILE=".env.research"
+DEFAULT_ENV_FILENAME=".env.research"
 
-if [ ! -f "$ENV_FILE" ]; then
-  echo "ERROR: $ENV_FILE not found in $(pwd)" >&2
-  echo "       Copy the .env.research section from .env.example and populate it." >&2
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# ---------------------------------------------------------------------------
+# Parse --env-file <path> (or --env-file=<path>) flag out of the arg list.
+# Every other argument is forwarded verbatim to python.
+# ---------------------------------------------------------------------------
+CUSTOM_ENV_FILE=""
+FORWARDED_ARGS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --env-file)
+      if [ "$#" -lt 2 ]; then
+        echo "ERROR: --env-file requires a path argument" >&2
+        exit 1
+      fi
+      CUSTOM_ENV_FILE="$2"
+      shift 2
+      ;;
+    --env-file=*)
+      CUSTOM_ENV_FILE="${1#--env-file=}"
+      shift 1
+      ;;
+    --)
+      shift
+      FORWARDED_ARGS+=("$@")
+      break
+      ;;
+    *)
+      FORWARDED_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# Search order for the env file:
+#   1. --env-file <path>  (explicit override)
+#   2. ./{DEFAULT_ENV_FILENAME}  (current working directory)
+#   3. $REPO_ROOT/{DEFAULT_ENV_FILENAME}  (repo root)
+# Never falls back to .env or .env.production; explicit paths that
+# resolve to those basenames are refused below.
+# ---------------------------------------------------------------------------
+CHECKED_LOCATIONS=()
+ENV_FILE=""
+
+if [ -n "$CUSTOM_ENV_FILE" ]; then
+  CHECKED_LOCATIONS+=("$CUSTOM_ENV_FILE (--env-file)")
+  if [ -f "$CUSTOM_ENV_FILE" ]; then
+    ENV_FILE="$CUSTOM_ENV_FILE"
+  fi
+fi
+
+if [ -z "$ENV_FILE" ]; then
+  CWD_CANDIDATE="./$DEFAULT_ENV_FILENAME"
+  CHECKED_LOCATIONS+=("$CWD_CANDIDATE (cwd: $(pwd))")
+  if [ -f "$CWD_CANDIDATE" ]; then
+    ENV_FILE="$CWD_CANDIDATE"
+  fi
+fi
+
+if [ -z "$ENV_FILE" ]; then
+  REPO_CANDIDATE="$REPO_ROOT/$DEFAULT_ENV_FILENAME"
+  CHECKED_LOCATIONS+=("$REPO_CANDIDATE (repo root)")
+  if [ -f "$REPO_CANDIDATE" ]; then
+    ENV_FILE="$REPO_CANDIDATE"
+  fi
+fi
+
+if [ -z "$ENV_FILE" ]; then
+  echo "ERROR: no research env file found. Checked:" >&2
+  for location in "${CHECKED_LOCATIONS[@]}"; do
+    echo "  - $location" >&2
+  done
+  echo "" >&2
+  echo "Provide one via --env-file <path> or create $DEFAULT_ENV_FILENAME" >&2
+  echo "at the repo root ($REPO_ROOT)." >&2
   exit 1
 fi
 
-# Load ONLY .env.research into the environment.
+# ---------------------------------------------------------------------------
+# Explicit safety: refuse .env and .env.production even if the operator
+# passed one via --env-file.  These files belong to other contexts and
+# must never be loaded by the research launcher.
+# ---------------------------------------------------------------------------
+BASENAME="$(basename "$ENV_FILE")"
+case "$BASENAME" in
+  .env|.env.production)
+    echo "ERROR: refusing to load $BASENAME via run-research;" >&2
+    echo "       only $DEFAULT_ENV_FILENAME is permitted." >&2
+    exit 1
+    ;;
+esac
+
+# Load ONLY the resolved env file.
 set -a
 # shellcheck source=/dev/null
 . "$ENV_FILE"
@@ -27,8 +119,8 @@ export HERMES_CONTEXT="$CONTEXT"
 
 # No dedicated research runner exists yet — see t_phase5_two_month_validation_run.
 # With no args, run a fail-fast config check via ResearchAccountConfig.from_env().
-if [ "$#" -eq 0 ]; then
+if [ ${#FORWARDED_ARGS[@]} -eq 0 ]; then
   exec python -c "from strategy.research_account import ResearchAccountConfig; ResearchAccountConfig.from_env(); print('research env OK')"
 fi
 
-exec python "$@"
+exec python "${FORWARDED_ARGS[@]}"
