@@ -4,6 +4,121 @@ Trader Joe release history.
 
 ---
 
+## v0.24.0 — Phase 5: Isolated Research Alpaca Client
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase5_research_account_api`
+
+### Added
+- `strategy/research_account.py` — read-only client for the
+  dedicated Research Alpaca paper account
+- `ResearchAccountConfig` frozen dataclass storing env-var *names*
+  only; refuses any name that does not start with
+  `RESEARCH_ALPACA`
+- `ResearchAccountClient` exposing only read methods:
+  `fetch_bars`, `list_calendar`, `paper_account_info`; deterministic
+  request construction; pluggable `http_get` for testing
+- `ResearchAccountRequest` frozen record with `redacted_dict()`
+  masking credential headers before logging or serialization
+- `ResearchAccountConfigError` / `ResearchAccountRequestError`
+  for typed failures
+- `REQUIRED_ENV_VARS` (`RESEARCH_ALPACA_API_KEY`,
+  `RESEARCH_ALPACA_SECRET_KEY`, `RESEARCH_ALPACA_ENDPOINT`) and
+  `FORBIDDEN_ENV_FALLBACKS` (`ALPACA_*` and `APCA_*`) — the two
+  sets are disjoint by construction and audited by a test
+- Default HTTP transport uses `urllib.request.urlopen`; tests
+  inject a fake to avoid the network
+
+### Behavior
+- Credentials are resolved at call time via
+  `ResearchAccountConfig.resolve_credentials(env)`; the config
+  object never stores credential values
+- `resolve_credentials` refuses to fall back to `ALPACA_*` /
+  `APCA_*`; an env supplying only those raises
+  `ResearchAccountConfigError`
+- Empty-string env values are treated as missing
+- Endpoint must start with `http://` or `https://`; trailing slash
+  is stripped
+- Query parameters are sorted alphabetically for reproducible URLs
+- `to_dict` and `redacted_dict` never leak credential values
+- Response shape checked: bars → object, calendar → list,
+  account → object; anything else raises `ResearchAccountRequestError`
+
+### Tests
+- `tests/test_research_account.py` — 62 tests covering:
+  - `REQUIRED_ENV_VARS` all in `RESEARCH_ALPACA_` namespace;
+    `FORBIDDEN_ENV_FALLBACKS` covers `ALPACA_*` and `APCA_*`; the
+    two sets are disjoint; API paths are the expected read
+    endpoints
+  - `ResearchAccountConfig`: defaults use `RESEARCH_ALPACA_*`;
+    rejects `ALPACA_*`, `APCA_*`, and any non-namespaced env; each
+    of the three names validated; `to_dict` returns names only
+    (no values); `resolve_credentials` reads from supplied env,
+    raises on missing keys, treats empty strings as missing,
+    never falls back to `ALPACA_*`; defaults to `os.environ` when
+    no env supplied
+  - Bars request: URL composition; deterministic query-string
+    ordering; credential headers; `redacted_dict` masks
+    credentials; empty symbols rejected; non-positive limit
+    rejected; optional start/end omitted when `None`
+  - Calendar request: URL with dates; URL without params;
+    credential headers
+  - Account request: exact URL; credential headers
+  - Endpoint validation: rejects `ftp://`, missing scheme, empty
+    string; strips trailing slash; positive timeout required
+  - `fetch_bars`: returns decoded JSON object; HTTP exception
+    wrapped as `ResearchAccountRequestError`; non-JSON raises;
+    non-object bars body raises; timeout forwarded to `http_get`
+  - `list_calendar`: returns list; non-list raises
+  - `paper_account_info`: returns dict; non-dict raises
+  - **Read-only API surface:** no `submit_order`, `place_order`,
+    `cancel_order`, `close_position`, `close_all_positions`,
+    `create_order`, `buy`, `sell`, `replace_order` attributes;
+    only `fetch_bars`, `list_calendar`, `paper_account_info`
+    exposed; no public method starts with `submit_` / `place_` /
+    `create_` / `cancel_` / `delete_`
+  - **Source safety:** no `submit_order`, `place_order`,
+    `cancel_order`, `close_position`, `create_order`,
+    `TradingClient`, `yfinance` references; no
+    `from trader import` / `import trader` /
+    `from crypto_trader import` / `import crypto_trader` /
+    `from trader_cli import` / `import trader_cli` /
+    `from telegram_approvals import` /
+    `import telegram_approvals` / `from strategy.runner import` /
+    `import strategy.runner`; no direct `ALPACA_*` or `APCA_*`
+    env reads; no `write_text` / `write_bytes` / `open(...,"w")` /
+    `with open`; module never imports `strategy.config`;
+    terminology audit passes; import-time exclusion of
+    `trader_cli`, `trader`, `crypto_trader`,
+    `telegram_approvals`; module never mutates global
+    `FeatureFlags`
+  - **Env-namespace isolation:** with only `ALPACA_*` / `APCA_*`
+    set, the client refuses to resolve credentials;
+    `ResearchAccountConfig.to_dict` output never contains
+    credential values; the client exposes no `api_key`,
+    `secret_key`, or `credentials` attribute
+  - **Deterministic request construction:** two clients with the
+    same env produce byte-equal URLs; `ResearchAccountRequest` is
+    frozen; passing an env dict does not mutate it
+- 981 passing total (0 failures)
+
+### Notes
+- Module is behavior-neutral: production Champion path is
+  unchanged; runner, scheduler, Telegram, CLI, and plugin behavior
+  untouched
+- No feature flags enabled; module never imports `strategy.config`
+- No file writes; credentials never touch disk
+- Historical validation paper account remains isolated: env-var
+  namespace disjoint from `ALPACA_*`; no cross-import into
+  Phase 1-4 modules
+- Follow-up cards remain in Backlog:
+  `t_phase5_local_llm_research_assistant`,
+  `t_phase5_two_month_validation_run`
+
+---
+
 ## v0.23.0 — Phase 4: End-to-End Learning System Validation
 
 **Date:** 2026-07-02

@@ -6,18 +6,18 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 5 Isolated Research Alpaca Client (`t_phase5_research_account_api`, Ready)
+- Current: Phase 5 Isolated Research Alpaca Client (`t_phase5_research_account_api`, Review)
 - Last completed: Phase 5 Research Execution Technical Design (`t_phase5_plan`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Phase 5 planning)
+- Commit: latest HEAD (Research Alpaca client implementation)
 - Tags: v0.4.0 (Phase 1 baseline), v0.10.0-phase2 (Phase 2), v0.17.0-phase3 (Phase 3)
-- Status: Phase 4 complete; Phase 5 design complete; Isolated Research Alpaca Client ready to implement
+- Status: Research Alpaca client implemented; awaiting Hermes validation
 
 ## Testing
-- Tests passing: 919
+- Tests passing: 981
 - Tests failing: 0
 - Last run: 2026-07-02
 

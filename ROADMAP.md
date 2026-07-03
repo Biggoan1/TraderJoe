@@ -1103,7 +1103,7 @@ read-only.  Order-path behavior is untouched throughout.
   the three implementation cards.
 
 #### `t_phase5_research_account_api` — Isolated Research Alpaca Client
-- **Status:** Ready
+- **Status:** Review
 - **Scope:** Add a new module (candidate: `strategy/research_account.py`)
   containing `ResearchAccountConfig` and `ResearchAccountClient`.
   The client exposes only historical-data reads (bars, calendar,
@@ -1122,6 +1122,22 @@ read-only.  Order-path behavior is untouched throughout.
     `RESEARCH_ALPACA_*` env vars are missing.
 - **Validation:** Fixture-driven tests using a mocked HTTP layer;
   environment-isolation tests; source-level order-path bans.
+- **Implementation note:** `strategy/research_account.py` adds
+  `ResearchAccountConfig` (env-var *names* only), `ResearchAccountClient`
+  (read-only: `fetch_bars`, `list_calendar`, `paper_account_info`),
+  `ResearchAccountRequest` (frozen record with `redacted_dict` masking
+  credential headers), `ResearchAccountConfigError`, and
+  `ResearchAccountRequestError`.  Env vars are strictly
+  `RESEARCH_ALPACA_API_KEY` / `_SECRET_KEY` / `_ENDPOINT`;
+  `FORBIDDEN_ENV_FALLBACKS` covers `ALPACA_*` and `APCA_*` and the
+  config rejects any env-var name that does not start with
+  `RESEARCH_ALPACA`.  The client refuses to fall back to `ALPACA_*`,
+  masks credentials in `to_dict` / `redacted_dict`, sorts query
+  parameters for deterministic URL construction, and requires an
+  `http://` / `https://` endpoint.  Default HTTP transport uses
+  `urllib.request.urlopen` (tests inject a fake to avoid the
+  network).  The module writes no files, imports no live-runner
+  module, and never touches `strategy/config.py`.
 
 #### `t_phase5_local_llm_research_assistant` — Local LLM Research Assistant
 - **Status:** Backlog (depends on `t_phase5_research_account_api`
