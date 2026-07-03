@@ -1030,11 +1030,20 @@ class ResearchAnalyst:
         explicit_model: Optional[str] = None,
         generated_at: Optional[str] = None,
     ) -> LLMNarrative:
+        # Prefer the trimmed analyst payload when the comparison
+        # exposes it; falls back to the full to_dict for older
+        # comparison shapes.  The trimmed payload strips structured
+        # explanations from every score-table row while keeping them
+        # on the disagreements the analyst actually cites.
+        payload_fn = getattr(comparison, "to_analyst_payload", None)
+        source_payload = (
+            payload_fn() if callable(payload_fn) else comparison.to_dict()
+        )
         return self.analyze(
             source_kind=KIND_COMPARISON,
             source_id=comparison.metadata.run_id,
             source_hash=comparison.stable_hash(),
-            source_payload=comparison.to_dict(),
+            source_payload=source_payload,
             explicit_model=explicit_model,
             generated_at=generated_at,
         )

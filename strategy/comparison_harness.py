@@ -258,6 +258,47 @@ class ChampionChallengerComparison:
             "warnings": list(self.warnings),
         }
 
+    def to_analyst_payload(self) -> Dict[str, Any]:
+        """Trimmed payload for the Research Analyst LLM prompt.
+
+        The full :meth:`to_dict` output attaches structured explanations
+        to every score-table row (an ``n_events × n_symbols`` fan-out
+        that inflates the payload sharply once explanations are wired).
+        The analyst reasons primarily about the classified
+        ``DisagreementRecord`` list, so this variant strips structured
+        explanations from ``score_tables`` while keeping them on
+        ``disagreements`` — the fields the analyst actually cites.
+        Free-text explanations are preserved on both surfaces.
+        """
+        trimmed_tables: List[Dict[str, Any]] = []
+        for table in self.score_tables:
+            rows: List[Dict[str, Any]] = []
+            for row in table.rows:
+                row_dict = row.to_dict()
+                row_dict.pop("champion_structured_explanation", None)
+                row_dict.pop("challenger_structured_explanation", None)
+                rows.append(row_dict)
+            trimmed_tables.append(
+                {
+                    "event_timestamp": table.event_timestamp,
+                    "event_type": table.event_type,
+                    "event_sequence": table.event_sequence,
+                    "champion_id": table.champion_id,
+                    "challenger_id": table.challenger_id,
+                    "rows": rows,
+                    "champion_warnings": list(table.champion_warnings),
+                    "challenger_warnings": list(table.challenger_warnings),
+                }
+            )
+        return {
+            "metadata": self.metadata.to_dict(),
+            "score_tables": trimmed_tables,
+            "disagreements": [
+                record.to_dict() for record in self.disagreements
+            ],
+            "warnings": list(self.warnings),
+        }
+
     def to_json(self) -> str:
         return stable_json(self.to_dict())
 

@@ -735,6 +735,28 @@ class TestChampionExplanationsFlowThrough:
             "populated"
         )
 
+    def test_analyst_payload_is_leaner_than_full_dict(self, tmp_path):
+        # to_analyst_payload strips structured explanations from every
+        # score-table row while preserving them on disagreements.
+        # This keeps the LLM prompt within the local endpoint's
+        # request body limits.
+        bundle = self._run(tmp_path)
+        full = bundle.comparison.to_dict()
+        trimmed = bundle.comparison.to_analyst_payload()
+        # Score-table rows drop structured explanations
+        for table in trimmed["score_tables"]:
+            for row in table["rows"]:
+                assert "champion_structured_explanation" not in row
+                assert "challenger_structured_explanation" not in row
+        # Disagreements KEEP structured explanations for the analyst
+        assert any(
+            "champion_structured_explanation" in d
+            for d in trimmed["disagreements"]
+        ) or not trimmed["disagreements"]
+        # Trimmed payload is strictly smaller
+        import json
+        assert len(json.dumps(trimmed)) < len(json.dumps(full))
+
     def test_learning_report_carries_explanation_summary(self, tmp_path):
         bundle = self._run(tmp_path)
         payload = bundle.learning_report.payload
