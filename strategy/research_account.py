@@ -49,12 +49,17 @@ from typing import (
 RESEARCH_ALPACA_API_KEY_ENV = "RESEARCH_ALPACA_API_KEY"
 RESEARCH_ALPACA_SECRET_KEY_ENV = "RESEARCH_ALPACA_SECRET_KEY"
 RESEARCH_ALPACA_ENDPOINT_ENV = "RESEARCH_ALPACA_ENDPOINT"
+RESEARCH_ALPACA_DATA_ENDPOINT_ENV = "RESEARCH_ALPACA_DATA_ENDPOINT"
 
 REQUIRED_ENV_VARS: Tuple[str, ...] = (
     RESEARCH_ALPACA_API_KEY_ENV,
     RESEARCH_ALPACA_SECRET_KEY_ENV,
     RESEARCH_ALPACA_ENDPOINT_ENV,
+    RESEARCH_ALPACA_DATA_ENDPOINT_ENV,
 )
+
+ENDPOINT_KIND_TRADING = "trading"
+ENDPOINT_KIND_DATA = "data"
 
 # We explicitly refuse to read from these — they belong to the live
 # paper account (or its SDK alias) and would break the isolation
@@ -107,16 +112,30 @@ class ResearchAccountConfig:
     """Env-var names for the isolated Research Alpaca account.
 
     The config stores variable *names* only; values are read at call
-    time via :meth:`resolve_credentials` so no credential is retained
-    on the config object or serialized to disk.
+    time via :meth:`resolve_credentials` / :meth:`resolve_data_credentials`
+    so no credential is retained on the config object or serialized
+    to disk.
+
+    Two endpoints are tracked separately: the *trading* endpoint
+    (``paper-api.alpaca.markets``) serves calendar and account
+    reads, while the *market-data* endpoint (``data.alpaca.markets``)
+    serves historical bars.  Alpaca hosts these on distinct domains,
+    so callers that only need one still name both — the split lives
+    entirely inside the ``RESEARCH_ALPACA_*`` namespace.
     """
 
     api_key_env: str = RESEARCH_ALPACA_API_KEY_ENV
     secret_key_env: str = RESEARCH_ALPACA_SECRET_KEY_ENV
     endpoint_env: str = RESEARCH_ALPACA_ENDPOINT_ENV
+    data_endpoint_env: str = RESEARCH_ALPACA_DATA_ENDPOINT_ENV
 
     def __post_init__(self) -> None:
-        for name in (self.api_key_env, self.secret_key_env, self.endpoint_env):
+        for name in (
+            self.api_key_env,
+            self.secret_key_env,
+            self.endpoint_env,
+            self.data_endpoint_env,
+        ):
             if not name.startswith("RESEARCH_ALPACA"):
                 raise ResearchAccountConfigError(
                     f"env var {name!r} does not start with 'RESEARCH_ALPACA'; "
@@ -128,25 +147,29 @@ class ResearchAccountConfig:
         cls, env: Optional[Mapping[str, str]] = None
     ) -> "ResearchAccountConfig":
         """Build a config from the ``RESEARCH_ALPACA_*`` namespace and
-        fail fast if any credential is missing.
+        fail fast if any credential or endpoint is missing.
 
-        Callers use this to construct a config that is guaranteed to
-        resolve at request-build time.  The returned object still
-        stores env-var *names* only — credential values are read at
-        each call to :meth:`resolve_credentials` and are never
-        retained on the instance.
+        Both the trading endpoint and the market-data endpoint are
+        required — the client refuses to guess which of the two a
+        caller wants.  The returned object still stores env-var
+        *names* only — credential values are read at each call to
+        :meth:`resolve_credentials` / :meth:`resolve_data_credentials`
+        and are never retained on the instance.
         """
         config = cls()
         config.resolve_credentials(env)
+        config.resolve_data_credentials(env)
         return config
 
-    def resolve_credentials(
-        self, env: Optional[Mapping[str, str]] = None
+    def _resolve(
+        self,
+        env: Optional[Mapping[str, str]],
+        endpoint_env: str,
     ) -> Tuple[str, str, str]:
         source = env if env is not None else os.environ
         missing = [
             name
-            for name in (self.api_key_env, self.secret_key_env, self.endpoint_env)
+            for name in (self.api_key_env, self.secret_key_env, endpoint_env)
             if not source.get(name)
         ]
         if missing:
@@ -156,14 +179,35 @@ class ResearchAccountConfig:
         return (
             source[self.api_key_env],
             source[self.secret_key_env],
-            source[self.endpoint_env],
+            source[endpoint_env],
         )
+
+    def resolve_credentials(
+        self, env: Optional[Mapping[str, str]] = None
+    ) -> Tuple[str, str, str]:
+        """Resolve the trading-endpoint credentials.
+
+        Returns ``(api_key, secret_key, trading_endpoint)``.  The
+        trading endpoint serves account and calendar reads.
+        """
+        return self._resolve(env, self.endpoint_env)
+
+    def resolve_data_credentials(
+        self, env: Optional[Mapping[str, str]] = None
+    ) -> Tuple[str, str, str]:
+        """Resolve the market-data-endpoint credentials.
+
+        Returns ``(api_key, secret_key, data_endpoint)``.  The
+        market-data endpoint serves historical bars.
+        """
+        return self._resolve(env, self.data_endpoint_env)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "api_key_env": self.api_key_env,
             "secret_key_env": self.secret_key_env,
             "endpoint_env": self.endpoint_env,
+            "data_endpoint_env": self.data_endpoint_env,
         }
 
 
@@ -295,7 +339,9 @@ class ResearchAccountClient:
             params["start"] = start
         if end:
             params["end"] = end
-        return self._build_request("GET", BARS_PATH, params)
+        return self._build_request(
+            "GET", BARS_PATH, params, endpoint_kind=ENDPOINT_KIND_DATA
+        )
 
     def build_calendar_request(
         self,
@@ -317,10 +363,20 @@ class ResearchAccountClient:
         method: str,
         path: str,
         params: Mapping[str, str],
+        endpoint_kind: str = ENDPOINT_KIND_TRADING,
     ) -> ResearchAccountRequest:
-        api_key, secret_key, endpoint = self._config.resolve_credentials(
-            self._env
-        )
+        if endpoint_kind == ENDPOINT_KIND_DATA:
+            api_key, secret_key, endpoint = (
+                self._config.resolve_data_credentials(self._env)
+            )
+        elif endpoint_kind == ENDPOINT_KIND_TRADING:
+            api_key, secret_key, endpoint = self._config.resolve_credentials(
+                self._env
+            )
+        else:
+            raise ResearchAccountConfigError(
+                f"unknown endpoint_kind: {endpoint_kind!r}"
+            )
         endpoint = endpoint.rstrip("/")
         if not endpoint.startswith(("http://", "https://")):
             raise ResearchAccountConfigError(

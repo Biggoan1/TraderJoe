@@ -43,12 +43,19 @@ the placeholder template, is tracked.
 - **Used by:** `strategy/research_account.py` (the isolated Research
   Alpaca client) and, in the future, `t_phase5_two_month_validation_run`.
 - **Credentials:** `RESEARCH_ALPACA_API_KEY`,
-  `RESEARCH_ALPACA_SECRET_KEY`, `RESEARCH_ALPACA_ENDPOINT`.
+  `RESEARCH_ALPACA_SECRET_KEY`, `RESEARCH_ALPACA_ENDPOINT` (trading
+  API — account & calendar reads), and
+  `RESEARCH_ALPACA_DATA_ENDPOINT` (market-data API — historical
+  bars). Alpaca hosts the two APIs on distinct domains
+  (`paper-api.alpaca.markets` vs `data.alpaca.markets`), so both
+  endpoints must be set — the client refuses to guess which one to
+  use.
 - **Alpaca account:** the dedicated Research paper account —
   distinct from the normal paper account. Research is
-  read-only: `ResearchAccountClient` exposes only `fetch_bars`,
-  `list_calendar`, and `paper_account_info`. No order-placement
-  method exists on it.
+  read-only: `ResearchAccountClient` exposes only `fetch_bars`
+  (routed through the data endpoint), `list_calendar`, and
+  `paper_account_info` (both routed through the trading endpoint).
+  No order-placement method exists on it.
 - **Hard rules:**
   - `strategy/research_account.py` refuses to fall back to
     `ALPACA_*` / `APCA_*` env values — a Research run that does not

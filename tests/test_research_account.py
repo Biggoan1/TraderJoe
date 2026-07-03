@@ -16,11 +16,14 @@ from strategy.research_account import (
     CALENDAR_PATH,
     DEFAULT_BAR_LIMIT,
     DEFAULT_TIMEFRAME,
+    ENDPOINT_KIND_DATA,
+    ENDPOINT_KIND_TRADING,
     FORBIDDEN_ENV_FALLBACKS,
     HEADER_API_KEY,
     HEADER_SECRET_KEY,
     REQUIRED_ENV_VARS,
     RESEARCH_ALPACA_API_KEY_ENV,
+    RESEARCH_ALPACA_DATA_ENDPOINT_ENV,
     RESEARCH_ALPACA_ENDPOINT_ENV,
     RESEARCH_ALPACA_SECRET_KEY_ENV,
     ResearchAccountClient,
@@ -35,6 +38,7 @@ TEST_ENV: Mapping[str, str] = {
     RESEARCH_ALPACA_API_KEY_ENV: "test-api-key",
     RESEARCH_ALPACA_SECRET_KEY_ENV: "test-secret-key",
     RESEARCH_ALPACA_ENDPOINT_ENV: "https://research-paper.alpaca.example",
+    RESEARCH_ALPACA_DATA_ENDPOINT_ENV: "https://research-data.alpaca.example",
 }
 
 
@@ -85,6 +89,7 @@ class TestResearchAccountConfig:
         assert c.api_key_env == RESEARCH_ALPACA_API_KEY_ENV
         assert c.secret_key_env == RESEARCH_ALPACA_SECRET_KEY_ENV
         assert c.endpoint_env == RESEARCH_ALPACA_ENDPOINT_ENV
+        assert c.data_endpoint_env == RESEARCH_ALPACA_DATA_ENDPOINT_ENV
 
     @pytest.mark.parametrize(
         "env_var",
@@ -94,11 +99,13 @@ class TestResearchAccountConfig:
         with pytest.raises(ResearchAccountConfigError, match="RESEARCH_ALPACA"):
             ResearchAccountConfig(api_key_env=env_var)
 
-    def test_all_three_names_validated(self):
+    def test_all_four_names_validated(self):
         with pytest.raises(ResearchAccountConfigError, match="RESEARCH_ALPACA"):
             ResearchAccountConfig(secret_key_env="ALPACA_SECRET_KEY")
         with pytest.raises(ResearchAccountConfigError, match="RESEARCH_ALPACA"):
             ResearchAccountConfig(endpoint_env="ALPACA_ENDPOINT")
+        with pytest.raises(ResearchAccountConfigError, match="RESEARCH_ALPACA"):
+            ResearchAccountConfig(data_endpoint_env="ALPACA_DATA_ENDPOINT")
 
     def test_to_dict_returns_only_names_not_values(self):
         c = ResearchAccountConfig()
@@ -107,16 +114,25 @@ class TestResearchAccountConfig:
             "api_key_env": RESEARCH_ALPACA_API_KEY_ENV,
             "secret_key_env": RESEARCH_ALPACA_SECRET_KEY_ENV,
             "endpoint_env": RESEARCH_ALPACA_ENDPOINT_ENV,
+            "data_endpoint_env": RESEARCH_ALPACA_DATA_ENDPOINT_ENV,
         }
         # No credential values leaked
         assert "test-api-key" not in json.dumps(d)
 
-    def test_resolve_reads_from_supplied_env(self):
+    def test_resolve_reads_trading_endpoint(self):
         c = ResearchAccountConfig()
         assert c.resolve_credentials(TEST_ENV) == (
             "test-api-key",
             "test-secret-key",
             "https://research-paper.alpaca.example",
+        )
+
+    def test_resolve_data_reads_data_endpoint(self):
+        c = ResearchAccountConfig()
+        assert c.resolve_data_credentials(TEST_ENV) == (
+            "test-api-key",
+            "test-secret-key",
+            "https://research-data.alpaca.example",
         )
 
     def test_missing_env_raises_clear_error(self):
@@ -125,12 +141,30 @@ class TestResearchAccountConfig:
         with pytest.raises(ResearchAccountConfigError, match="missing"):
             c.resolve_credentials(env)
 
+    def test_missing_data_endpoint_raises_clear_error(self):
+        c = ResearchAccountConfig()
+        # Trading endpoint present, data endpoint missing
+        env = {
+            RESEARCH_ALPACA_API_KEY_ENV: "k",
+            RESEARCH_ALPACA_SECRET_KEY_ENV: "s",
+            RESEARCH_ALPACA_ENDPOINT_ENV: "https://trading.example",
+        }
+        # Trading resolver succeeds
+        c.resolve_credentials(env)
+        # Data resolver fails on the missing data endpoint
+        with pytest.raises(
+            ResearchAccountConfigError,
+            match=re.escape(RESEARCH_ALPACA_DATA_ENDPOINT_ENV),
+        ):
+            c.resolve_data_credentials(env)
+
     def test_empty_string_env_treated_as_missing(self):
         c = ResearchAccountConfig()
         env = {
             RESEARCH_ALPACA_API_KEY_ENV: "",
             RESEARCH_ALPACA_SECRET_KEY_ENV: "s",
             RESEARCH_ALPACA_ENDPOINT_ENV: "https://x",
+            RESEARCH_ALPACA_DATA_ENDPOINT_ENV: "https://y",
         }
         with pytest.raises(ResearchAccountConfigError, match="missing"):
             c.resolve_credentials(env)
@@ -146,6 +180,8 @@ class TestResearchAccountConfig:
         }
         with pytest.raises(ResearchAccountConfigError, match="missing"):
             c.resolve_credentials(env)
+        with pytest.raises(ResearchAccountConfigError, match="missing"):
+            c.resolve_data_credentials(env)
 
     def test_resolve_defaults_to_os_environ_when_not_supplied(self, monkeypatch):
         # Clean state: remove RESEARCH_ALPACA_* to make resolve fail
@@ -154,6 +190,8 @@ class TestResearchAccountConfig:
         c = ResearchAccountConfig()
         with pytest.raises(ResearchAccountConfigError, match="missing"):
             c.resolve_credentials()
+        with pytest.raises(ResearchAccountConfigError, match="missing"):
+            c.resolve_data_credentials()
 
 
 class TestFromEnv:
@@ -163,10 +201,23 @@ class TestFromEnv:
         assert c.api_key_env == RESEARCH_ALPACA_API_KEY_ENV
         assert c.secret_key_env == RESEARCH_ALPACA_SECRET_KEY_ENV
         assert c.endpoint_env == RESEARCH_ALPACA_ENDPOINT_ENV
+        assert c.data_endpoint_env == RESEARCH_ALPACA_DATA_ENDPOINT_ENV
 
     def test_from_env_fails_fast_when_credentials_missing(self):
         with pytest.raises(ResearchAccountConfigError, match="missing"):
             ResearchAccountConfig.from_env({})
+
+    def test_from_env_fails_fast_when_data_endpoint_missing(self):
+        env = {
+            RESEARCH_ALPACA_API_KEY_ENV: "k",
+            RESEARCH_ALPACA_SECRET_KEY_ENV: "s",
+            RESEARCH_ALPACA_ENDPOINT_ENV: "https://trading.example",
+        }
+        with pytest.raises(
+            ResearchAccountConfigError,
+            match=re.escape(RESEARCH_ALPACA_DATA_ENDPOINT_ENV),
+        ):
+            ResearchAccountConfig.from_env(env)
 
     def test_from_env_refuses_alpaca_fallback(self):
         env = {
@@ -190,6 +241,7 @@ class TestFromEnv:
             "api_key_env": RESEARCH_ALPACA_API_KEY_ENV,
             "secret_key_env": RESEARCH_ALPACA_SECRET_KEY_ENV,
             "endpoint_env": RESEARCH_ALPACA_ENDPOINT_ENV,
+            "data_endpoint_env": RESEARCH_ALPACA_DATA_ENDPOINT_ENV,
         }
         payload = json.dumps(c.to_dict())
         assert "test-api-key" not in payload
@@ -213,7 +265,7 @@ class TestBarsRequest:
         )
         assert request.method == "GET"
         assert request.url.startswith(
-            "https://research-paper.alpaca.example/v2/stocks/bars?"
+            "https://research-data.alpaca.example/v2/stocks/bars?"
         )
         assert "symbols=AAPL%2CMSFT" in request.url
         assert "timeframe=1Day" in request.url
@@ -350,24 +402,106 @@ class TestEndpointValidation:
         "endpoint",
         ["ftp://alpaca", "example.com", "://bad", ""],
     )
-    def test_endpoint_must_be_http_or_https(self, endpoint):
+    def test_trading_endpoint_must_be_http_or_https(self, endpoint):
         env = dict(TEST_ENV) | {RESEARCH_ALPACA_ENDPOINT_ENV: endpoint}
+        client = ResearchAccountClient(env=env)
+        with pytest.raises(ResearchAccountConfigError):
+            client.build_calendar_request()
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        ["ftp://alpaca", "example.com", "://bad", ""],
+    )
+    def test_data_endpoint_must_be_http_or_https(self, endpoint):
+        env = dict(TEST_ENV) | {RESEARCH_ALPACA_DATA_ENDPOINT_ENV: endpoint}
         client = ResearchAccountClient(env=env)
         with pytest.raises(ResearchAccountConfigError):
             client.build_bars_request(["AAPL"])
 
-    def test_trailing_slash_stripped(self):
+    def test_data_endpoint_trailing_slash_stripped(self):
         env = dict(TEST_ENV) | {
-            RESEARCH_ALPACA_ENDPOINT_ENV: "https://x.example/"
+            RESEARCH_ALPACA_DATA_ENDPOINT_ENV: "https://x.example/"
         }
         client = ResearchAccountClient(env=env)
         request = client.build_bars_request(["AAPL"])
         assert "//v2/stocks/bars" not in request.url
 
+    def test_trading_endpoint_trailing_slash_stripped(self):
+        env = dict(TEST_ENV) | {
+            RESEARCH_ALPACA_ENDPOINT_ENV: "https://x.example/"
+        }
+        client = ResearchAccountClient(env=env)
+        request = client.build_calendar_request()
+        assert "//v2/calendar" not in request.url
+
     @pytest.mark.parametrize("timeout", [0, -1, -0.001])
     def test_timeout_must_be_positive(self, timeout):
         with pytest.raises(ResearchAccountConfigError, match="timeout"):
             ResearchAccountClient(env=TEST_ENV, timeout=timeout)
+
+
+class TestEndpointRouting:
+    def test_bars_use_data_endpoint(self):
+        client = ResearchAccountClient(env=TEST_ENV)
+        request = client.build_bars_request(["AAPL"])
+        assert request.url.startswith(
+            "https://research-data.alpaca.example/v2/stocks/bars"
+        )
+        assert "research-paper.alpaca.example" not in request.url
+
+    def test_calendar_uses_trading_endpoint(self):
+        client = ResearchAccountClient(env=TEST_ENV)
+        request = client.build_calendar_request()
+        assert request.url.startswith(
+            "https://research-paper.alpaca.example/v2/calendar"
+        )
+        assert "research-data.alpaca.example" not in request.url
+
+    def test_account_uses_trading_endpoint(self):
+        client = ResearchAccountClient(env=TEST_ENV)
+        request = client.build_account_request()
+        assert request.url == (
+            "https://research-paper.alpaca.example/v2/account"
+        )
+        assert "research-data.alpaca.example" not in request.url
+
+    def test_trading_and_data_endpoints_are_independent(self):
+        # Break the trading endpoint but leave the data endpoint valid:
+        # bars must still resolve, calendar/account must fail.
+        env = dict(TEST_ENV) | {RESEARCH_ALPACA_ENDPOINT_ENV: ""}
+        client = ResearchAccountClient(env=env)
+        # Bars still succeed because they only need the data endpoint.
+        request = client.build_bars_request(["AAPL"])
+        assert request.url.startswith(
+            "https://research-data.alpaca.example/v2/stocks/bars"
+        )
+        # Calendar fails because the trading endpoint is missing.
+        with pytest.raises(ResearchAccountConfigError):
+            client.build_calendar_request()
+
+    def test_data_endpoint_missing_still_permits_trading_reads(self):
+        # Mirror: break the data endpoint, calendar/account still work.
+        env = dict(TEST_ENV) | {RESEARCH_ALPACA_DATA_ENDPOINT_ENV: ""}
+        client = ResearchAccountClient(env=env)
+        request = client.build_calendar_request()
+        assert request.url.startswith(
+            "https://research-paper.alpaca.example/v2/calendar"
+        )
+        with pytest.raises(ResearchAccountConfigError):
+            client.build_bars_request(["AAPL"])
+
+    def test_unknown_endpoint_kind_rejected(self):
+        client = ResearchAccountClient(env=TEST_ENV)
+        with pytest.raises(
+            ResearchAccountConfigError, match="endpoint_kind"
+        ):
+            client._build_request(
+                "GET", "/v2/whatever", {}, endpoint_kind="something-else"
+            )
+
+    def test_endpoint_kind_constants_are_stable(self):
+        assert ENDPOINT_KIND_TRADING == "trading"
+        assert ENDPOINT_KIND_DATA == "data"
 
 
 # ---------------------------------------------------------------------------
@@ -613,7 +747,10 @@ class TestSourceSafety:
         flags = reset_feature_flags()
         monkeypatch.setenv(RESEARCH_ALPACA_API_KEY_ENV, "k")
         monkeypatch.setenv(RESEARCH_ALPACA_SECRET_KEY_ENV, "s")
-        monkeypatch.setenv(RESEARCH_ALPACA_ENDPOINT_ENV, "https://x")
+        monkeypatch.setenv(RESEARCH_ALPACA_ENDPOINT_ENV, "https://trading.x")
+        monkeypatch.setenv(
+            RESEARCH_ALPACA_DATA_ENDPOINT_ENV, "https://data.x"
+        )
 
         def http_get(request, timeout):
             if request.url.endswith("/v2/calendar"):
@@ -658,6 +795,7 @@ class TestEnvNamespaceIsolation:
             "api_key_env": RESEARCH_ALPACA_API_KEY_ENV,
             "secret_key_env": RESEARCH_ALPACA_SECRET_KEY_ENV,
             "endpoint_env": RESEARCH_ALPACA_ENDPOINT_ENV,
+            "data_endpoint_env": RESEARCH_ALPACA_DATA_ENDPOINT_ENV,
         }
         assert client.timeout > 0
         # No property named api_key, secret_key, etc.
