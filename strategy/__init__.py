@@ -101,6 +101,15 @@ from strategy.walk_forward import (
     WalkForwardSplitResult,
     generate_walk_forward_schedule,
 )
+from strategy.research_reports import (
+    KNOWN_REPORT_KINDS,
+    REPORT_KIND_COMPARISON,
+    REPORT_KIND_WALK_FORWARD,
+    ResearchReport,
+    ResearchReportPaths,
+    render_comparison_report,
+    render_walk_forward_report,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -142,6 +151,13 @@ __all__ = [
     "WalkForwardSplit",
     "WalkForwardSplitResult",
     "generate_walk_forward_schedule",
+    "KNOWN_REPORT_KINDS",
+    "REPORT_KIND_COMPARISON",
+    "REPORT_KIND_WALK_FORWARD",
+    "ResearchReport",
+    "ResearchReportPaths",
+    "render_comparison_report",
+    "render_walk_forward_report",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",

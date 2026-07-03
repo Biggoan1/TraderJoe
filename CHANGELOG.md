@@ -4,6 +4,80 @@ Trader Joe release history.
 
 ---
 
+## v0.16.0 — Phase 3: Research Report Generation
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase3_reports`
+
+### Added
+- `strategy/research_reports.py` — read-only research report renderers
+- `ResearchReport` bundle carrying Markdown + JSON payload + flattened
+  disagreements + reproducibility manifest
+- `ResearchReportPaths` with deterministic file layout:
+  `<output_dir>/<report_id>/report.md`,
+  `<output_dir>/<report_id>/report.json`,
+  `<output_dir>/<report_id>/disagreements.json`,
+  `<output_dir>/<report_id>/manifest.json`
+- `render_comparison_report` renders any
+  `ChampionChallengerComparison`; produces daily-summary rows keyed by
+  event timestamp with per-kind disagreement counts, and groups
+  disagreements by kind for the Markdown body
+- `render_walk_forward_report` renders any `WalkForwardReport`;
+  produces per-split rows with IS/OOS windows and per-kind
+  disagreement counts, and annotates disagreements with `split_id` /
+  `split_index`
+- `report_id` derived from the source `stable_hash`, so identical
+  source objects always yield the same `report_id`
+- `ResearchReport.stable_hash()` excludes `generated_at`; walk-forward
+  payload strips nested `generated_at` fields for reproducibility
+- `ResearchReport.write(output_dir)` persists all four files via
+  `pathlib`; parent directory is created if missing and is idempotent
+
+### Tests
+- `tests/test_research_reports.py` — 32 tests covering:
+  - `ResearchReport` rejects unknown kinds
+  - `KNOWN_REPORT_KINDS` covers comparison and walk-forward
+  - `ResearchReportPaths` derives all four artifact paths from
+    `output_dir + report_id`
+  - Comparison report: `rr_` prefix, custom title, JSON payload
+    schema, disagreement counts match records, disagreements sorted
+    deterministically, daily summary row per event, manifest carries
+    reproducibility metadata, Markdown contains all required sections,
+    Markdown flags the no-events case, data-quality notes include
+    warnings
+  - Walk-forward report: `rr_` prefix, JSON schema, disagreements
+    carry split metadata, disagreements sorted by
+    (split_index, timestamp, event_type, symbol, kind), Markdown key
+    sections, no-splits case flagged, manifest carries source id +
+    hashes, payload strips nested `generated_at` at every level
+  - Determinism: `stable_hash` and `report_id` independent of
+    `generated_at` for both comparison and walk-forward; repeat renders
+    produce byte-identical `to_json`, `to_markdown`,
+    `disagreements_json`, and `manifest_json`
+  - Write: persists all four files; is idempotent; places files under
+    `<output_dir>/<report_id>/`
+  - Source-level ban on `alpaca`, `place_order`, `submit_order`,
+    `TradingClient`, `api_key`, and `yfinance`
+  - Terminology check: only the one explanatory sentence containing
+    `training` (inside quotes) is present
+  - Import-time exclusion of `trader_cli`, `trader`, `crypto_trader`,
+    `telegram_approvals`
+  - Global feature flags remain `all_disabled` after render + write
+- 599 passing total (0 failures)
+
+### Notes
+- Renderers are behavior-neutral: production Champion path is
+  unchanged; runner, scheduler, Telegram, CLI, and plugin behavior are
+  untouched
+- No feature flags enabled; `strategy/config.py` untouched
+- No `yfinance`, HTTP, or broker credentials touched
+- Historical validation paper account remains documentation-only
+- Promotion gates (`t_phase3_promotion_gates`) remain in Backlog
+
+---
+
 ## v0.15.0 — Phase 3: Walk-Forward Evaluation Pipeline
 
 **Date:** 2026-07-02

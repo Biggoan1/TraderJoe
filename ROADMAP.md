@@ -178,7 +178,7 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Done |
 | `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Done |
 | `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Done |
-| `t_phase3_reports` | Phase 3: Research Report Generation | Phase 3 | Ready |
+| `t_phase3_reports` | Phase 3: Research Report Generation | Phase 3 | Review |
 | `t_phase3_promotion_gates` | Phase 3: Feature Promotion Gates | Phase 3 | Backlog |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
@@ -446,10 +446,11 @@ approved production rollout.
 - **Validation outcome:** 567 tests passing; leakage prevention verified (in-sample events never reach the harness); split boundaries strictly non-overlapping (OOS start > IS end); determinism verified (report_id and stable_hash independent of `generated_at`); no `alpaca`, `yfinance`, `TradingClient`, `api_key`, or order-path references; global feature flags remain all disabled; commit `01089d3`.
 
 #### `t_phase3_reports` — Research Report Generation
-- **Status:** Backlog
+- **Status:** Review
 - **Scope:** Generate Markdown and JSON reports for backtests, walk-forward runs, daily comparisons, and disagreements.
 - **Definition of Done:** Reports include metrics, artifacts, data-quality notes, and reproducibility metadata.
 - **Validation:** Snapshot tests for report structure and JSON schema tests for machine-readable outputs.
+- **Implementation note:** `strategy/research_reports.py` adds `ResearchReport`, `ResearchReportPaths`, `render_comparison_report` (for `ChampionChallengerComparison`), and `render_walk_forward_report` (for `WalkForwardReport`). Each report bundle carries a Markdown body, a JSON payload with summary + daily-summary + source dict, a flattened deterministically-sorted disagreement list, and a manifest with report id, source id, source hash, disagreement counts, and `generated_at`. `report_id` is derived from the source `stable_hash`, so identical source objects always produce the same report id. `ResearchReport.stable_hash()` excludes `generated_at`; the walk-forward payload strips nested `generated_at` fields at every comparison metadata level. `ResearchReport.write(output_dir)` persists four files under `<output_dir>/<report_id>/`: `report.md`, `report.json`, `disagreements.json`, `manifest.json`. No order-path imports, no live trading impact, no broker credentials, no `yfinance` dependency.
 
 #### `t_phase3_promotion_gates` — Feature Promotion Gates
 - **Status:** Backlog
