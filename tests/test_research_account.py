@@ -156,6 +156,46 @@ class TestResearchAccountConfig:
             c.resolve_credentials()
 
 
+class TestFromEnv:
+    def test_from_env_returns_configured_instance(self):
+        c = ResearchAccountConfig.from_env(TEST_ENV)
+        assert isinstance(c, ResearchAccountConfig)
+        assert c.api_key_env == RESEARCH_ALPACA_API_KEY_ENV
+        assert c.secret_key_env == RESEARCH_ALPACA_SECRET_KEY_ENV
+        assert c.endpoint_env == RESEARCH_ALPACA_ENDPOINT_ENV
+
+    def test_from_env_fails_fast_when_credentials_missing(self):
+        with pytest.raises(ResearchAccountConfigError, match="missing"):
+            ResearchAccountConfig.from_env({})
+
+    def test_from_env_refuses_alpaca_fallback(self):
+        env = {
+            "ALPACA_API_KEY": "leak",
+            "ALPACA_SECRET_KEY": "leak",
+            "ALPACA_ENDPOINT": "leak",
+        }
+        with pytest.raises(ResearchAccountConfigError, match="missing"):
+            ResearchAccountConfig.from_env(env)
+
+    def test_from_env_reads_os_environ_when_not_supplied(self, monkeypatch):
+        for name in REQUIRED_ENV_VARS:
+            monkeypatch.setenv(name, "present")
+        c = ResearchAccountConfig.from_env()
+        assert c.api_key_env == RESEARCH_ALPACA_API_KEY_ENV
+
+    def test_from_env_does_not_retain_credential_values(self):
+        c = ResearchAccountConfig.from_env(TEST_ENV)
+        # to_dict must surface only env-var *names*, never values
+        assert c.to_dict() == {
+            "api_key_env": RESEARCH_ALPACA_API_KEY_ENV,
+            "secret_key_env": RESEARCH_ALPACA_SECRET_KEY_ENV,
+            "endpoint_env": RESEARCH_ALPACA_ENDPOINT_ENV,
+        }
+        payload = json.dumps(c.to_dict())
+        assert "test-api-key" not in payload
+        assert "test-secret-key" not in payload
+
+
 # ---------------------------------------------------------------------------
 # Request builder — bars
 # ---------------------------------------------------------------------------
@@ -204,6 +244,41 @@ class TestBarsRequest:
         assert d["headers"][HEADER_SECRET_KEY] == "***REDACTED***"
         # Non-credential headers unchanged
         assert d["headers"]["Accept"] == "application/json"
+
+    def test_repr_does_not_leak_credentials(self):
+        client = ResearchAccountClient(env=TEST_ENV)
+        request = client.build_bars_request(["AAPL"])
+        text = repr(request)
+        assert "test-api-key" not in text
+        assert "test-secret-key" not in text
+        assert "***REDACTED***" in text
+
+    def test_str_does_not_leak_credentials(self):
+        client = ResearchAccountClient(env=TEST_ENV)
+        request = client.build_bars_request(["AAPL"])
+        text = str(request)
+        assert "test-api-key" not in text
+        assert "test-secret-key" not in text
+        assert "***REDACTED***" in text
+
+    def test_exception_traceback_does_not_leak_credentials(self):
+        """Exception messages must never format the raw request so that
+        credentials would surface in a traceback.  We exercise this by
+        forcing the transport to raise and confirming the wrapped
+        error only carries the redacted URL/method.
+        """
+        def http_get(request, timeout):
+            raise RuntimeError(f"transport error: {request!r}")
+
+        client = ResearchAccountClient(env=TEST_ENV, http_get=http_get)
+        try:
+            client.fetch_bars(["AAPL"])
+        except ResearchAccountRequestError as exc:
+            message = str(exc)
+            assert "test-api-key" not in message
+            assert "test-secret-key" not in message
+        else:
+            pytest.fail("expected ResearchAccountRequestError")
 
     def test_empty_symbols_rejected(self):
         client = ResearchAccountClient(env=TEST_ENV)

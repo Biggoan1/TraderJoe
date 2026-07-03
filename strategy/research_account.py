@@ -123,6 +123,23 @@ class ResearchAccountConfig:
                     "credential namespace must be isolated from ALPACA_*"
                 )
 
+    @classmethod
+    def from_env(
+        cls, env: Optional[Mapping[str, str]] = None
+    ) -> "ResearchAccountConfig":
+        """Build a config from the ``RESEARCH_ALPACA_*`` namespace and
+        fail fast if any credential is missing.
+
+        Callers use this to construct a config that is guaranteed to
+        resolve at request-build time.  The returned object still
+        stores env-var *names* only — credential values are read at
+        each call to :meth:`resolve_credentials` and are never
+        retained on the instance.
+        """
+        config = cls()
+        config.resolve_credentials(env)
+        return config
+
     def resolve_credentials(
         self, env: Optional[Mapping[str, str]] = None
     ) -> Tuple[str, str, str]:
@@ -155,12 +172,14 @@ class ResearchAccountConfig:
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class ResearchAccountRequest:
     """Deterministic HTTP request record for testing and inspection.
 
     :meth:`redacted_dict` masks credential headers so requests can be
-    logged or persisted without leaking API keys.
+    logged or persisted without leaking API keys.  ``__repr__`` and
+    ``__str__`` route through the same redaction so accidental
+    ``print(request)`` or exception traces cannot expose credentials.
     """
 
     method: str
@@ -181,6 +200,14 @@ class ResearchAccountRequest:
             "url": self.url,
             "headers": redacted,
         }
+
+    def __repr__(self) -> str:
+        return (
+            f"ResearchAccountRequest(method={self.method!r}, "
+            f"url={self.url!r}, headers={self.redacted_dict()['headers']!r})"
+        )
+
+    __str__ = __repr__
 
 
 HttpGetCallable = Callable[["ResearchAccountRequest", float], bytes]

@@ -1,4 +1,8 @@
+# Environment files — never commit real credentials.
+# `.env.example` is the tracked placeholder template.
 .env
+.env.*
+!.env.example
 .hermes-profile/
 venv/
 .venv/
