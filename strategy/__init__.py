@@ -200,6 +200,10 @@ from strategy.learning_reports import (
     LearningReportPaths,
     render_learning_report,
 )
+from strategy.learning_pipeline import (
+    LearningPipeline,
+    LearningPipelineError,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -326,6 +330,8 @@ __all__ = [
     "LearningReport",
     "LearningReportPaths",
     "render_learning_report",
+    "LearningPipeline",
+    "LearningPipelineError",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",

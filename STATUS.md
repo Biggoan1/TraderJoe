@@ -6,18 +6,18 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 4 End-to-End Learning System Validation (`t_phase4_validation`, Ready)
+- Current: Phase 4 End-to-End Learning System Validation (`t_phase4_validation`, Review)
 - Last completed: Phase 4 Learning Report Generation (`t_phase4_learning_reports`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Learning reports validation)
+- Commit: latest HEAD (Learning System e2e implementation)
 - Tags: v0.4.0 (Phase 1 baseline), v0.10.0-phase2 (Phase 2), v0.17.0-phase3 (Phase 3)
-- Status: Learning reports validated; End-to-End Learning System Validation ready
+- Status: Learning System e2e implemented; awaiting Hermes validation
 
 ## Testing
-- Tests passing: 893
+- Tests passing: 919
 - Tests failing: 0
 - Last run: 2026-07-02
 

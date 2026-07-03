@@ -4,6 +4,65 @@ Trader Joe release history.
 
 ---
 
+## v0.23.0 — Phase 4: End-to-End Learning System Validation
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase4_validation`
+
+### Added
+- `strategy/learning_pipeline.py` — thin orchestrator that renders
+  and persists a `LearningReport` under a statically-configured
+  output root
+- `LearningPipeline` frozen dataclass with an immutable
+  `output_root` (defaults to `DEFAULT_LEARNING_REPORT_OUTPUT_DIR`);
+  no per-run override
+- `LearningPipeline.run(...)` calls `render_learning_report`, checks
+  that the resolved report directory is inside `output_root`, then
+  persists via `LearningReport.write`
+- `LearningPipelineError` raised when the path guard trips or when
+  `output_root` is empty at construction time
+
+### Tests
+- `tests/test_learning_system_e2e.py` — 26 tests covering:
+  - Default `output_root` matches `DEFAULT_LEARNING_REPORT_OUTPUT_DIR`
+  - Empty `output_root` rejected at construction
+  - **Byte-identical reruns:** two independent pipelines sharing
+    the same fixtures and `generated_at` produce byte-equal
+    `report.md`, `report.json`, `recommendations.json`, and
+    `manifest.json`; `stable_hash` and `report_id` independent of
+    `generated_at`
+  - Empty inputs produce a valid bundle; partial inputs produce a
+    findings-only report; `output_root` created if missing
+  - **Write-outside-root refusal:** all four files land under
+    `output_root`; no stray files at the parent tmp path; a
+    symlinked root resolves into the real target and stays inside it
+  - Global `FeatureFlags` singleton stays disabled after a run
+  - `strategy/config.py` bytes byte-identical before and after a run
+  - **Forbidden-import ban across every Phase 4 module** (parametric
+    over `stats_engine`, `pattern_discovery`, `feature_importance`,
+    `weight_recommender`, `learning_reports`, `learning_pipeline`):
+    no `alpaca`, `place_order`, `submit_order`, `TradingClient`,
+    `api_key`, or `yfinance` references; no order-path modules
+    pulled in at import time
+  - Terminology audit across every Phase 4 module: every module
+    contains the explicit "training" policy sentence and no stray
+    references
+  - Recommendation routing: `envelope.apply_to_entry` still routes
+    into `PromotionEntry.evidence` after a pipeline run
+- 919 passing total (0 failures)
+
+### Notes
+- Module is behavior-neutral: production Champion path is unchanged;
+  runner, scheduler, Telegram, CLI, and plugin behavior untouched
+- No feature flags enabled; module never imports `strategy.config`
+- No broker credentials, HTTP calls, or historical validation paper
+  account wiring
+- **Phase 4 backlog is empty pending Hermes validation of this card**
+
+---
+
 ## v0.22.0 — Phase 4: Learning Report Generation
 
 **Date:** 2026-07-02

@@ -858,7 +858,7 @@ config.
   `878c50e`.
 
 #### `t_phase4_validation` — End-to-End Learning System Validation
-- **Status:** Ready
+- **Status:** Review
 - **Scope:** Wire the Learning System end-to-end against a frozen
   Phase 3 artifact set (test fixtures under `tests/fixtures/`) and
   assert determinism, feature-flag isolation, no order-path imports,
@@ -869,6 +869,24 @@ config.
 - **Validation:** Tests must cover: byte-identical reruns, empty input
   handling, missing-input handling, and refusal to write outside the
   configured output root.
+- **Implementation note:** `strategy/learning_pipeline.py` adds
+  `LearningPipeline` (frozen dataclass) with an immutable
+  `output_root` and a `run(...)` method that renders + writes.  A
+  defensive path guard raises `LearningPipelineError` if the resolved
+  report directory escapes the configured root.
+  `tests/test_learning_system_e2e.py` exercises the full pipeline
+  against a frozen fixture set, asserts byte-identical files across
+  two independent pipeline runs sharing the same `generated_at`,
+  handles empty and partial inputs, verifies that no files land
+  outside `output_root` (including through a symlinked root),
+  confirms the global `FeatureFlags` singleton stays disabled,
+  confirms `strategy/config.py` bytes are unchanged, scans every
+  Phase 4 module for source-level `alpaca` / `place_order` /
+  `submit_order` / `TradingClient` / `api_key` / `yfinance`
+  references, asserts import-time exclusion of `trader_cli`,
+  `trader`, `crypto_trader`, and `telegram_approvals`, and audits
+  terminology to catch any stray "training" references outside the
+  policy sentence.
 
 ### Dependencies
 
