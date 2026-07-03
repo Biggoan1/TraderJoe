@@ -172,7 +172,14 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_194b8638` | Sprint 8: Enhanced Daily Digest + Trade Metadata | Phase 2 | Done |
 | `t_c0ab3a10` | Sprint 9: Sector Leadership Tracking | Phase 2 | Done |
 | `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Done |
-| `t_phase3_plan` | Phase 3: Decision Engine Rollout Plan | Phase 3 | Ready |
+| `t_phase3_plan` | Phase 3: Decision Engine Technical Design | Phase 3 | Review |
+| `t_phase3_backtest_lab` | Phase 3: Backtest Lab Foundation | Phase 3 | Ready |
+| `t_phase3_data_catalog` | Phase 3: Research Data Catalog | Phase 3 | Backlog |
+| `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Backlog |
+| `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Backlog |
+| `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Backlog |
+| `t_phase3_reports` | Phase 3: Research Report Generation | Phase 3 | Backlog |
+| `t_phase3_promotion_gates` | Phase 3: Feature Promotion Gates | Phase 3 | Backlog |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
 
@@ -182,9 +189,11 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 
 ## Phase 3 — Decision Engine
 
-**Status:** PLANNING
+**Status:** DESIGN COMPLETE - AWAITING VALIDATION
 
-**Objective:** Improve trading decisions using data from Phases 1 and 2.
+**Objective:** Transform Trader Joe from an observational intelligence platform
+into an evidence-driven research platform before any decision-engine behavior is
+enabled.
 
 - Relative Strength incorporated into rankings
 - Market Regime incorporated into scoring
@@ -197,68 +206,248 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 
 **Exit Criteria:** Evidence of improved expectancy, drawdown, or alpha over Champion.
 
-### Planning Card: Decision Engine Rollout Plan
+### Planning Card: Decision Engine Technical Design
 - **Card:** `t_phase3_plan`
-- **Status:** Ready
+- **Status:** Review
 - **Scope:** Planning only — no strategy logic changes, no feature flags enabled.
-- **First candidate feature:** Relative Strength candidate-ranking overlay.
-- **Reasoning:** Relative Strength is the earliest Phase 2 intelligence signal, has isolated tests, and can be evaluated as a non-ordering challenger score before any trade-routing behavior changes.
+- **Design outcome:** Build research infrastructure first; evaluate strategy changes only after reproducible backtests and walk-forward comparisons exist.
+- **First candidate strategy feature:** Relative Strength candidate-ranking overlay.
+- **First implementation card:** `t_phase3_backtest_lab` — Backtest Lab Foundation.
 
-#### Required Evidence Before Enabling
-- At least four weeks of paper-trading records with Phase 2 observational fields captured.
-- Historical trade sample includes entry score, market regime, relative strength snapshot, sector leadership, and market breadth context where available.
-- Backtest and walk-forward results compare Champion against a challenger that applies the Relative Strength overlay.
-- Evidence must show improvement without concentrating risk in one symbol, sector, or regime.
-- Results must be reproducible from committed code and documented inputs.
+### Backtest Lab Architecture
 
-#### Success Metrics
-- Higher expectancy per trade than Champion after fees/slippage assumptions.
-- Equal or improved win rate without reducing average winner/loser ratio.
-- Lower or equal max drawdown versus Champion.
-- Higher profit factor versus Champion.
-- No material degradation in trade count or opportunity coverage.
-- Improvement persists across market regimes and is not driven by one outlier trade.
+The Backtest Lab is a read-only research subsystem. It replays historical
+market context and strategy inputs, compares versioned strategy variants, and
+generates reproducible evidence packages. It must not place orders, mutate
+paper-trading state, or enable feature flags.
 
-#### Failure Metrics
-- Lower expectancy than Champion.
-- Higher max drawdown or materially worse downside tail.
-- Profit factor deterioration.
-- Excess concentration in one sector, symbol, or market regime.
-- Reduced sample size that makes the comparison statistically weak.
-- Performance improvement explained primarily by one outlier trade.
+#### Components
+- **Dataset Registry:** Versioned index of historical market data, benchmark data, paper-trading logs, watchlists, research notes, and experiment inputs.
+- **Replay Engine:** Deterministic event loop that replays market snapshots, candidate lists, and strategy inputs in timestamp order.
+- **Strategy Adapter Layer:** Stable interface wrapping Champion and Challenger evaluators without importing order-placement behavior.
+- **Execution Simulator:** Deterministic fill/slippage/fee model for hypothetical outcomes. Assumptions are configuration-driven and recorded with each run.
+- **Experiment Runner:** Coordinates dataset, strategy version, config, random seed, and output paths.
+- **Metrics Engine:** Calculates performance, risk, stability, concentration, and statistical comparison metrics.
+- **Report Generator:** Writes human-readable Markdown and machine-readable JSON reports.
+- **Artifact Store:** Stores run manifests, configs, inputs, metrics, reports, and hashes needed to reproduce results.
 
-#### Rollback Criteria
-- Disable the candidate feature flag immediately if live/paper challenger metrics breach failure thresholds.
-- Revert to pure Champion rankings if data capture or scoring fails closed/ambiguous.
-- Revert the focused implementation commit if the feature alters order-path behavior outside the approved gate.
-- Leave all Phase 2 observational collectors active unless they are the direct source of failure.
+#### Interfaces
+- `DatasetProvider`: returns historical bars, benchmark series, watchlist snapshots, and closed trade context by time range.
+- `ReplayClock`: yields deterministic timestamps and event batches.
+- `StrategyEvaluator`: accepts a replay event and returns scores, rankings, and explanations only.
+- `ExecutionModel`: converts hypothetical entries/exits into simulated fills using recorded assumptions.
+- `MetricsCalculator`: accepts Champion and Challenger ledgers and returns comparable metrics.
+- `ReportWriter`: persists experiment outputs under a stable run id.
 
-#### Approval Gate
-- No behavior-changing feature flag may be enabled without explicit human approval.
-- Approval requires documented backtest, walk-forward, and Champion/Challenger comparison results.
-- Approval must name the exact flag, rollout duration, monitoring metrics, and rollback owner.
-- Champion remains the production trading path until the approval gate is satisfied.
+These are design interfaces. They are not implementation commitments until the
+corresponding Kanban card is active.
 
-#### Backtest And Walk-Forward Requirements
-- Backtest the Relative Strength overlay against historical closed trades and available market context.
-- Use time-ordered walk-forward splits; do not tune on future data.
-- Include transaction cost/slippage assumptions consistent with paper-trading execution.
-- Report results by market regime, sector leadership bucket, and breadth regime where data exists.
-- Preserve raw comparison outputs under a reproducible report path before requesting approval.
+#### Data Flow
+1. User selects dataset version, strategy versions, config, and date range.
+2. Experiment Runner creates a run manifest with git commit, tag state, config hash, dataset hash, and random seed.
+3. Dataset Provider loads immutable historical inputs.
+4. Replay Engine emits timestamped market/candidate events.
+5. Champion and Challenger Strategy Evaluators score the same event stream.
+6. Execution Simulator produces hypothetical ledgers using identical fill assumptions.
+7. Metrics Engine compares ledgers and score/ranking differences.
+8. Report Generator writes summary, detailed trades, disagreement reports, and reproducibility metadata.
+9. Artifact Store preserves the full run package.
 
-#### Champion/Challenger Comparison Plan
-- Champion: current production ranking and buy/sell behavior.
-- Challenger: Champion plus Relative Strength overlay in scoring/ranking only.
-- Compare on identical candidate universes and timestamps.
-- Record would-have-ranked positions, selected candidates, skipped candidates, and score deltas.
-- Keep the challenger observational until the approval gate explicitly allows behavior change.
-- Review weekly until sample size is sufficient for an enable/abandon decision.
+#### Storage
+- `research_data/` for immutable imported datasets and manifests.
+- `reports/backtests/` for human-readable reports.
+- `reports/backtests/artifacts/` for JSON manifests, metrics, score deltas, and ledgers.
+- Existing `trades_history.db` remains the source for paper-trading logs.
+- Research Notebook entries may reference backtest run ids but must not be required to reproduce a run.
 
-#### Recommended First Implementation Card
-- **Card:** `t_phase3_rs_overlay`
-- **Title:** Phase 3: Relative Strength Ranking Overlay
+#### Configuration
+- All backtest settings live in explicit config files or command arguments recorded in the run manifest.
+- Required config fields: dataset id, date range, symbols/watchlist source, benchmark set, strategy ids, fee model, slippage model, execution timing assumptions, seed, and output directory.
+- No production trading config may be modified by a backtest run.
+- No feature flag may be enabled as a side effect of a backtest run.
+
+### Champion / Challenger Framework
+
+#### Participants
+- **Champion:** Current production strategy behavior, including existing ranking and buy/sell decisions as the reference path.
+- **Relative Strength Challenger:** Champion plus Relative Strength ranking overlay, evaluated as scores/rankings first and behavior-changing only after approval.
+
+#### Side-By-Side Execution
+- Both evaluators receive identical replay events, candidate lists, market context, and execution assumptions.
+- Champion output is the baseline ledger and score/ranking table.
+- Challenger output includes the same fields plus Relative Strength score contribution and explanation.
+- Challenger must be able to run in shadow mode during paper trading without placing orders.
+
+#### Score Comparison
+- Record raw Champion score, Relative Strength component score, final Challenger score, rank delta, and selected/not-selected status.
+- Store per-symbol score explanations for every evaluated candidate.
+- Highlight large rank changes and threshold crossings in disagreement reports.
+
+#### Trade Comparison
+- Compare would-enter, would-skip, would-size, and would-exit differences.
+- Classify disagreements as ranking-only, entry-selection, exit-timing, position-sizing, or data-unavailable.
+- No disagreement may affect live or paper orders until the approval gate is satisfied.
+
+#### Daily Reports
+- Daily summary of Champion vs Challenger candidate rankings.
+- Hypothetical Challenger trades, skipped Champion trades, and shared trades.
+- Daily P/L, drawdown, exposure, concentration, and regime context.
+- Data-quality warnings for missing Relative Strength, regime, sector, or breadth context.
+
+#### Disagreement Reports
+- Every trade/candidate disagreement includes timestamp, symbol, Champion decision, Challenger decision, score delta, contributing factors, market regime, sector leadership, and breadth context.
+- Reports group disagreements by outcome and reason so the team can identify systematic value or harm.
+
+#### Performance Metrics
+- Expectancy, win rate, average return, average winner, average loser, profit factor, drawdown, Sharpe, trade count, exposure, turnover, concentration, and regime breakdown.
+- Metrics must be calculated identically for Champion and Challenger.
+
+### Feature Flag Promotion Process
+
+No feature flag may be enabled without explicit human approval. Promotion is a
+state transition for a specific feature and strategy version, not a general
+permission to change trading behavior.
+
+| State | Meaning | Required Gate |
+|---|---|---|
+| Disabled | Feature code exists but has no behavior impact | Default state; tests prove flag defaults off |
+| Backtest | Feature is evaluated on historical replay only | Approved experiment manifest and reproducible dataset |
+| Walk Forward | Feature is evaluated on time-ordered out-of-sample periods | Backtest report accepted; no look-ahead findings |
+| Paper Trading | Feature runs in shadow or paper comparison mode | Walk-forward report accepted; rollback plan documented |
+| Candidate | Feature has sufficient paper-trading evidence for review | Candidate report includes metrics, failures, and disagreements |
+| Approved | Human explicitly approves a bounded rollout | Approval names flag, scope, owner, monitoring, and rollback |
+| Production | Feature affects production behavior under approved flag | Monitoring confirms no rollback condition is active |
+
+Every transition requires a dated report, git commit, dataset/run ids, and
+explicit approval recorded in project documentation or an approved operations
+record.
+
+### Success Metrics
+
+Promotion criteria must be measured against Champion over the same replay or
+paper-trading window. Numeric thresholds are intentionally not hard-coded here;
+they must be set in the active experiment plan and justified by sample size.
+
+- Sharpe or risk-adjusted return improves versus Champion.
+- Max drawdown is lower or not materially worse than Champion.
+- Win rate improves or remains stable without weakening average winner/loser ratio.
+- Profit factor improves versus Champion.
+- Average return and expectancy per trade improve after costs.
+- Trade frequency remains sufficient and does not degrade opportunity coverage.
+- Risk-adjusted return improvement is not concentrated in one symbol, sector, or regime.
+- Statistical significance or confidence interval analysis supports the observed improvement.
+- Results persist across backtest, walk-forward, and paper-trading windows.
+
+### Failure / Rollback Criteria
+
+Rollback criteria are objective and must be evaluated from recorded metrics.
+
+- Challenger expectancy is lower than Champion for the approved evaluation window.
+- Challenger max drawdown exceeds the approved limit or is worse than Champion beyond the active experiment threshold.
+- Challenger profit factor is lower than Champion beyond the active experiment threshold.
+- Challenger trade frequency falls below the active experiment minimum sample requirement.
+- Challenger concentration exceeds approved symbol, sector, or regime limits.
+- Data-quality failures affect more than the approved missing-data tolerance.
+- Reproducibility check fails: same run id/config/dataset cannot regenerate the same outputs.
+- Any order-path behavior changes outside the approved feature flag and scope.
+- Any required report, artifact, or approval record is missing.
+
+If any rollback condition is met during an approved rollout, disable the feature
+flag and return to Champion behavior. The rollback action must be documented
+with metrics and commit/run references.
+
+### Data Requirements
+
+#### Historical Market Data
+- OHLCV bars for all candidate symbols at the granularity used by Champion.
+- Corporate action adjustment policy recorded with every dataset.
+- Data source, import time, symbol universe, and checksum recorded in dataset manifests.
+
+#### Benchmark Data
+- SPY and QQQ data for Relative Strength, market regime, and benchmark comparisons.
+- Sector ETF data for sector leadership context.
+- Breadth universe data for market breadth context.
+
+#### Paper Trading Logs
+- Closed trades, open trades, entry/exit metadata, scores, market context, and timestamps from `trades_history.db`.
+- Paper-trading comparison snapshots from Champion and Challenger shadow runs.
+- Daily digest outputs as human-readable supporting context.
+
+#### Research Notebook Integration
+- Notebook entries reference run ids, hypothesis ids, and evidence summaries.
+- Notebook conclusions must distinguish hypotheses from validated findings.
+- Notebook data is supporting context, not the primary reproducibility source.
+
+#### Experiment Metadata
+- Git commit, tag, branch, strategy id, feature flag state, config hash, dataset id, run id, seed, runtime, and operator.
+- Approval state and gate transition history.
+- Known limitations and data-quality notes.
+
+#### Version Tracking
+- Strategy adapters are versioned independently from datasets.
+- Reports must identify Champion version and Challenger version.
+- Dataset changes require new dataset ids and cannot silently replace prior inputs.
+
+### Kanban Breakdown
+
+Each Phase 3 card must be independently testable and reversible. No card may
+enable behavior-changing feature flags unless its scope explicitly includes an
+approved production rollout.
+
+#### `t_phase3_backtest_lab` — Backtest Lab Foundation
+- **Status:** Ready
+- **Scope:** Build run manifests, deterministic replay skeleton, artifact paths, and no-op strategy adapter fixtures.
+- **Definition of Done:** Reproducible dry-run backtest creates manifest, deterministic event order, and empty report artifacts.
+- **Validation:** Unit tests for manifest hashing, replay ordering, config serialization, and no production side effects.
+
+#### `t_phase3_data_catalog` — Research Data Catalog
 - **Status:** Backlog
-- **Scope:** Implement a disabled-by-default challenger scoring overlay and comparison reports only.
+- **Scope:** Define dataset manifests for historical bars, benchmarks, paper logs, and research context.
+- **Definition of Done:** Dataset registry can list, validate, and checksum local datasets without mutating them.
+- **Validation:** Tests for missing data, checksum mismatch, schema validation, and reproducibility metadata.
+
+#### `t_phase3_champion_challenger` — Champion/Challenger Comparison Harness
+- **Status:** Backlog
+- **Scope:** Run Champion and Challenger evaluators side-by-side in replay without order placement.
+- **Definition of Done:** Same input stream produces comparable score tables and disagreement records.
+- **Validation:** Tests prove identical inputs, deterministic outputs, and no order-path imports/calls.
+
+#### `t_phase3_rs_challenger` — Relative Strength Challenger Overlay
+- **Status:** Backlog
+- **Scope:** Implement disabled-by-default Relative Strength score overlay for challenger evaluation only.
+- **Definition of Done:** Overlay produces score deltas and explanations but cannot affect live trading decisions.
+- **Validation:** Tests for score composition, missing RS data, disabled flag defaults, and Champion parity when disabled.
+
+#### `t_phase3_walk_forward` — Walk-Forward Evaluation Pipeline
+- **Status:** Backlog
+- **Scope:** Add time-ordered train/evaluate splits and out-of-sample comparison reports.
+- **Definition of Done:** Pipeline runs configured splits and aggregates metrics without future-data leakage.
+- **Validation:** Tests for split boundaries, leakage prevention, and reproducible split manifests.
+
+#### `t_phase3_reports` — Research Report Generation
+- **Status:** Backlog
+- **Scope:** Generate Markdown and JSON reports for backtests, walk-forward runs, daily comparisons, and disagreements.
+- **Definition of Done:** Reports include metrics, artifacts, data-quality notes, and reproducibility metadata.
+- **Validation:** Snapshot tests for report structure and JSON schema tests for machine-readable outputs.
+
+#### `t_phase3_promotion_gates` — Feature Promotion Gates
+- **Status:** Backlog
+- **Scope:** Encode promotion-state documentation, approval records, and rollback checks.
+- **Definition of Done:** Promotion reports can prove current state and required evidence for each transition.
+- **Validation:** Tests for gate completeness, missing approval blocks, rollback trigger detection, and disabled defaults.
+
+### Architectural Risks
+
+- **Look-ahead bias:** Historical replay may accidentally use future data unless event timestamps and split boundaries are strict.
+- **Data survivorship bias:** Current watchlists may omit symbols that failed or fell out of the universe.
+- **Non-reproducible data sources:** External price APIs can revise history or fail; dataset snapshots and checksums are required.
+- **Strategy/order coupling:** Existing strategy code may mix scoring with execution; adapters must avoid importing order paths.
+- **Overfitting:** Relative Strength parameters may look good in-sample and fail out-of-sample.
+- **Small sample size:** Paper-trading data may be insufficient for statistically meaningful promotion.
+- **Metric gaming:** Optimizing one metric can degrade drawdown, concentration, or trade frequency.
+- **Operational ambiguity:** Approval and rollback ownership must be explicit before any behavior-changing rollout.
+- **Artifact sprawl:** Backtests can create many reports; run ids, retention rules, and manifests must keep results navigable.
+- **False confidence from paper fills:** Paper execution may differ from real fills; slippage and cost assumptions must be explicit.
 
 ---
 

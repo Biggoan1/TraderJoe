@@ -6,15 +6,15 @@
 - Challenger: none
 
 ## Sprint
-- Current: Phase 3 planning (`t_phase3_plan`, Ready)
+- Current: Phase 3 architecture (`t_phase3_plan`, Review)
 - Last completed: 10
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Phase 3 planning)
+- Commit: latest HEAD (Phase 3 architecture)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Phase 2 complete; Phase 3 planning card ready
+- Status: Phase 2 complete; Phase 3 design ready for validation
 
 ## Testing
 - Tests passing: 401
