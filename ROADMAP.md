@@ -751,7 +751,7 @@ config.
   remain all disabled; commit `3711453`.
 
 #### `t_phase4_feature_importance` — Feature Importance Analysis
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Correlate score components, disagreement kinds, and
   market-context features with realized outcomes across the harness
   event windows. Produce ranked `FeatureImportanceScore` records.
@@ -773,9 +773,18 @@ config.
   `filter_lookahead_observations` and pass `reject_lookahead=False`.
   Reuses stats-engine confidence-level plumbing.  Never imports
   `strategy.config`; never references any order-path module.
+- **Validation outcome:** 814 tests passing; `pearson_r` returns 1.0
+  for perfect positive linear inputs; Fisher CI symmetric at r=0;
+  look-ahead observations rejected by default (`ValueError`);
+  `filter_lookahead_observations` correctly partitions;
+  deterministic ranking (perfectly correlated feature ranks above
+  uncorrelated feature; passing the same list in a different order
+  yields identical output); low-sample features flagged with
+  `low_sample`; `importance_stable_hash` order-independent; global
+  feature flags remain all disabled; commit `22259ad`.
 
 #### `t_phase4_weight_recommender` — Strategy Weight Recommender
-- **Status:** Backlog (depends on `t_phase4_feature_importance`)
+- **Status:** Ready
 - **Scope:** Suggest adjusted weights for Champion scoring components
   (e.g., `SELL_SCORE_FACTOR_WEIGHTS`) based on feature-importance
   output. Emit `WeightRecommendation` records that name the target

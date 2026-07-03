@@ -8,8 +8,32 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase4_feature_importance`
+**Commit:** `22259ad`, plus validation board update
+
+### Validation
+- 814 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- `pearson_r` returns 1.0 for perfect positive linear input;
+  `fisher_z_ci` symmetric around zero at r=0
+- Look-ahead observations rejected by default with `ValueError`;
+  `filter_lookahead_observations` correctly partitions
+- Deterministic ranking: perfectly correlated feature ranks above
+  uncorrelated feature; passing the same list in a different order
+  yields identical output
+- Low-sample features labeled `hypothesis` and flagged
+  `low_sample`
+- `importance_stable_hash` order-independent
+- No `alpaca`, `yfinance`, `TradingClient`, `api_key`, `place_order`,
+  `submit_order`, or order-path references in
+  `strategy/feature_importance.py`
+- Module never imports `strategy.config`, never reads or mutates
+  `FeatureFlags`
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase4_feature_importance` moved to Done
+- Card `t_phase4_weight_recommender` unblocked and moved to Ready
 
 ### Added
 - `strategy/feature_importance.py` — per-feature Pearson-r importance
