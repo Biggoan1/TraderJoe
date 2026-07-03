@@ -141,6 +141,47 @@ class LocalLLMRequestError(RuntimeError):
     """Raised when an HTTP call to the local LLM fails."""
 
 
+class ModelDiscoveryError(LocalLLMConfigError):
+    """Raised when model discovery cannot complete (transport, decoding).
+
+    Distinct from :class:`ModelNotAvailableError`: this covers
+    endpoint failures, not "endpoint responded but model is absent".
+    """
+
+
+class ModelNotAvailableError(LocalLLMConfigError):
+    """Raised when the configured model is not present in the
+    endpoint's enumerated model list.
+
+    Never silently substituted — the caller must inspect
+    ``available`` and pick a replacement explicitly.
+    """
+
+    def __init__(
+        self,
+        configured: str,
+        endpoint: str,
+        available: Sequence[str],
+        closest: Optional[str] = None,
+    ) -> None:
+        self.configured = configured
+        self.endpoint = endpoint
+        self.available = tuple(available)
+        self.closest = closest
+        parts = [
+            f"configured model {configured!r} is not available "
+            f"on {endpoint!r}",
+            f"available: {list(available)}",
+        ]
+        if closest:
+            parts.append(f"closest match: {closest!r}")
+        parts.append(
+            "The Research Analyst will NOT silently substitute another "
+            "model; edit RESEARCH_AI_MODEL to one of the listed values."
+        )
+        super().__init__("; ".join(parts))
+
+
 # ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
@@ -295,6 +336,16 @@ def _detect_forbidden_output(text: str) -> List[str]:
 
 
 HttpPostCallable = Callable[[str, Dict[str, Any], float], bytes]
+HttpGetCallable = Callable[[str, float], bytes]
+
+# Endpoint paths tried in order for model enumeration.  The client
+# tries them until one succeeds; a 404 / connection error triggers
+# the next candidate.
+MODEL_LISTING_PATHS: Tuple[str, ...] = (
+    "/v1/models",   # OpenAI-compat (llama.cpp, llama-swap, LM Studio,
+                    # Hermes Gateway)
+    "/api/tags",    # Ollama
+)
 
 
 def _urllib_http_post(
@@ -308,6 +359,13 @@ def _urllib_http_post(
         method="POST",
         headers={"Content-Type": "application/json"},
     )
+    with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310
+        return resp.read()
+
+
+def _urllib_http_get(url: str, timeout: float) -> bytes:
+    """Default HTTP GET via :mod:`urllib.request` — tests inject a fake."""
+    request = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310
         return resp.read()
 
@@ -332,6 +390,7 @@ class LocalLLMClient:
         env: Optional[Mapping[str, str]] = None,
         temperature: float = REQUIRED_TEMPERATURE,
         http_post: Optional[HttpPostCallable] = None,
+        http_get: Optional[HttpGetCallable] = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
     ):
         source = env if env is not None else os.environ
@@ -353,6 +412,9 @@ class LocalLLMClient:
         self._temperature = float(temperature)
         self._http_post: HttpPostCallable = (
             http_post if http_post is not None else _urllib_http_post
+        )
+        self._http_get: HttpGetCallable = (
+            http_get if http_get is not None else _urllib_http_get
         )
         self._timeout = float(timeout)
         self._env = env
@@ -426,6 +488,59 @@ class LocalLLMClient:
             )
         return self._extract_content(payload)
 
+    def list_models(self) -> List[str]:
+        """Enumerate models available on the configured local endpoint.
+
+        Tries the OpenAI-compatible ``/v1/models`` endpoint first,
+        then Ollama's ``/api/tags`` as a fallback.  Returns a
+        deterministic sorted list.  Returns an empty list if the
+        endpoint responds but exposes no ``data`` / ``models`` array
+        (treated as "capability unavailable" by callers).
+
+        Raises :class:`ModelDiscoveryError` only when every candidate
+        path fails at the transport or decoding layer.  The endpoint
+        guard already ensured we are calling a loopback host — this
+        method never queries a cloud provider.
+        """
+        errors: List[str] = []
+        for path in MODEL_LISTING_PATHS:
+            url = f"{self._endpoint}{path}"
+            try:
+                body = self._http_get(url, self._timeout)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{path}: {exc}")
+                continue
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError as exc:
+                errors.append(f"{path}: non-JSON response: {exc}")
+                continue
+            names = self._extract_model_names(payload)
+            return sorted(set(names))
+        raise ModelDiscoveryError(
+            f"could not enumerate models on {self._endpoint}; "
+            f"tried {list(MODEL_LISTING_PATHS)}; errors: {errors}"
+        )
+
+    @staticmethod
+    def _extract_model_names(payload: Any) -> List[str]:
+        names: List[str] = []
+        if not isinstance(payload, dict):
+            return names
+        # OpenAI-compat: {"data": [{"id": "..."}, ...]}
+        # Ollama:       {"models": [{"name": "..."}, ...]}
+        for key in ("data", "models"):
+            entries = payload.get(key)
+            if isinstance(entries, list):
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        name = entry.get("id") or entry.get("name")
+                        if isinstance(name, str) and name:
+                            names.append(name)
+                if names:
+                    return names
+        return names
+
     @staticmethod
     def _extract_content(payload: Dict[str, Any]) -> str:
         # Ollama: {"message": {"content": "..."}}
@@ -447,6 +562,63 @@ class LocalLLMClient:
         raise LocalLLMRequestError(
             "local LLM response did not contain a message content string"
         )
+
+
+# ---------------------------------------------------------------------------
+# Model discovery
+# ---------------------------------------------------------------------------
+
+
+def _closest_model(
+    configured: str, available: Sequence[str]
+) -> Optional[str]:
+    """Return the closest name from ``available`` using a deterministic
+    Levenshtein-style ratio via :mod:`difflib`."""
+    import difflib
+
+    if not available:
+        return None
+    matches = difflib.get_close_matches(
+        configured, list(available), n=1, cutoff=0.4
+    )
+    return matches[0] if matches else None
+
+
+def verify_model_available(
+    client: "LocalLLMClient",
+    model: str,
+) -> Tuple[List[str], Optional[str]]:
+    """Verify that ``model`` is present in the endpoint's model list.
+
+    Returns ``(available, closest_or_none)`` when the model IS
+    available.  Raises :class:`ModelNotAvailableError` when the
+    endpoint enumerates models but the configured model is absent.
+
+    If the endpoint does not support enumeration (all listing paths
+    fail), returns ``([], None)`` and does NOT raise — callers fall
+    back to the configured model without behavior change.  The
+    endpoint's loopback guarantee still holds because
+    :class:`LocalLLMClient` enforced it at construction time; this
+    helper never touches a cloud provider.
+    """
+    _assert_local_model(model)
+    try:
+        available = client.list_models()
+    except ModelDiscoveryError:
+        return [], None
+    if not available:
+        # Endpoint responded but exposes no listing — treated as
+        # capability unavailable, per the task spec.
+        return [], None
+    if model in available:
+        return available, None
+    closest = _closest_model(model, available)
+    raise ModelNotAvailableError(
+        configured=model,
+        endpoint=client.endpoint,
+        available=available,
+        closest=closest,
+    )
 
 
 # ---------------------------------------------------------------------------

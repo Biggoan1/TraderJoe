@@ -33,6 +33,9 @@ from strategy.research_analyst import (
     LocalLLMEndpointError,
     LocalLLMRequestError,
     LLMNarrative,
+    MODEL_LISTING_PATHS,
+    ModelDiscoveryError,
+    ModelNotAvailableError,
     NARRATIVE_ID_PREFIX,
     REQUIRED_TEMPERATURE,
     RESEARCH_LLM_ENDPOINT_ENV,
@@ -42,6 +45,7 @@ from strategy.research_analyst import (
     SYSTEM_PROMPT,
     compose_analyst_prompt,
     render_analyst_report,
+    verify_model_available,
 )
 
 
@@ -906,3 +910,280 @@ class TestSourceSafety:
         render_analyst_report(narrative)
         assert flags.all_disabled is True
         assert flags.enabled_flags == []
+
+
+# ---------------------------------------------------------------------------
+# Model discovery
+# ---------------------------------------------------------------------------
+
+
+def _http_get_returning(paths_to_responses):
+    """Build a fake http_get that returns bytes per requested path."""
+    calls: List[str] = []
+
+    def _get(url: str, timeout: float) -> bytes:
+        calls.append(url)
+        for suffix, response in paths_to_responses.items():
+            if url.endswith(suffix):
+                if isinstance(response, Exception):
+                    raise response
+                return response
+        raise urllib.error.URLError(f"no fake response for {url}")
+
+    return _get, calls
+
+
+import urllib.error  # noqa: E402 (placed here for the helper above)
+
+
+class TestListModelsPaths:
+    def test_openai_compat_shape(self):
+        response = json.dumps(
+            {"data": [{"id": "llama3.1"}, {"id": "gpt-oss-20b"}]}
+        ).encode()
+        get, calls = _http_get_returning({"/v1/models": response})
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="llama3.1",
+            http_get=get,
+        )
+        assert client.list_models() == ["gpt-oss-20b", "llama3.1"]
+        assert calls == ["http://127.0.0.1:11434/v1/models"]
+
+    def test_ollama_shape_fallback_when_v1_fails(self):
+        get, calls = _http_get_returning(
+            {
+                "/v1/models": urllib.error.HTTPError(
+                    "http://127.0.0.1:11434/v1/models",
+                    404,
+                    "not found",
+                    {},
+                    None,
+                ),
+                "/api/tags": json.dumps(
+                    {"models": [{"name": "mistral:7b"}, {"name": "phi3:mini"}]}
+                ).encode(),
+            }
+        )
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="mistral:7b",
+            http_get=get,
+        )
+        assert client.list_models() == ["mistral:7b", "phi3:mini"]
+        assert calls[0].endswith("/v1/models")
+        assert calls[1].endswith("/api/tags")
+
+    def test_returns_empty_when_endpoint_exposes_no_listing(self):
+        response = json.dumps({"data": []}).encode()
+        get, _ = _http_get_returning({"/v1/models": response})
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="anything",
+            http_get=get,
+        )
+        assert client.list_models() == []
+
+    def test_all_paths_failing_raises_discovery_error(self):
+        error = urllib.error.URLError("connection refused")
+        get, calls = _http_get_returning(
+            {"/v1/models": error, "/api/tags": error}
+        )
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="anything",
+            http_get=get,
+        )
+        with pytest.raises(ModelDiscoveryError):
+            client.list_models()
+        # Both paths were attempted before giving up.
+        assert any(url.endswith("/v1/models") for url in calls)
+        assert any(url.endswith("/api/tags") for url in calls)
+
+    def test_non_json_response_causes_next_path(self):
+        # First path returns garbage, second returns a valid list.
+        get, calls = _http_get_returning(
+            {
+                "/v1/models": b"not json",
+                "/api/tags": json.dumps(
+                    {"models": [{"name": "phi3:mini"}]}
+                ).encode(),
+            }
+        )
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="phi3:mini",
+            http_get=get,
+        )
+        assert client.list_models() == ["phi3:mini"]
+
+    def test_list_is_deterministic_sorted(self):
+        response = json.dumps(
+            {"data": [{"id": "z-model"}, {"id": "a-model"}, {"id": "a-model"}]}
+        ).encode()
+        get, _ = _http_get_returning({"/v1/models": response})
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="a-model",
+            http_get=get,
+        )
+        # Sorted + deduped
+        assert client.list_models() == ["a-model", "z-model"]
+
+
+class TestListModelsSchemas:
+    def test_extract_model_names_handles_missing_dicts(self):
+        # Payload not shaped like either OpenAI-compat or Ollama.
+        get, _ = _http_get_returning(
+            {"/v1/models": json.dumps({"foo": "bar"}).encode()}
+        )
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="m",
+            http_get=get,
+        )
+        assert client.list_models() == []
+
+    def test_extract_model_names_skips_bad_entries(self):
+        payload = {
+            "data": [
+                {"id": "good-1"},
+                "not a dict",
+                {"name": "good-2"},  # fallback name key
+                {"id": ""},
+                {"id": None},
+            ]
+        }
+        get, _ = _http_get_returning(
+            {"/v1/models": json.dumps(payload).encode()}
+        )
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="good-1",
+            http_get=get,
+        )
+        # Only the two well-formed entries survive.
+        assert client.list_models() == ["good-1", "good-2"]
+
+
+class TestListModelsLoopbackOnly:
+    def test_non_loopback_endpoint_never_constructs_client(self):
+        # Endpoint guard triggers before list_models can be reached.
+        with pytest.raises(LocalLLMEndpointError):
+            LocalLLMClient(
+                endpoint="http://8.8.8.8", model="local-model"
+            )
+
+
+class TestVerifyModelAvailable:
+    def _client(self, response_map):
+        get, _ = _http_get_returning(response_map)
+        return LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="configured-model",
+            http_get=get,
+        )
+
+    def test_returns_available_and_none_when_configured_present(self):
+        client = self._client(
+            {
+                "/v1/models": json.dumps(
+                    {"data": [{"id": "configured-model"}, {"id": "other"}]}
+                ).encode()
+            }
+        )
+        available, closest = verify_model_available(client, "configured-model")
+        assert available == ["configured-model", "other"]
+        assert closest is None
+
+    def test_raises_with_configured_endpoint_available_when_absent(self):
+        client = self._client(
+            {
+                "/v1/models": json.dumps(
+                    {"data": [{"id": "llama3.1"}, {"id": "mistral:7b"}]}
+                ).encode()
+            }
+        )
+        with pytest.raises(ModelNotAvailableError) as excinfo:
+            verify_model_available(client, "llama3-1")  # near miss
+        exc = excinfo.value
+        assert exc.configured == "llama3-1"
+        assert exc.endpoint == "http://127.0.0.1:11434"
+        assert exc.available == ("llama3.1", "mistral:7b")
+        # Closest is the numerically-closest model name
+        assert exc.closest == "llama3.1"
+        # Message includes all four fields the operator needs
+        text = str(exc)
+        assert "llama3-1" in text
+        assert "http://127.0.0.1:11434" in text
+        assert "llama3.1" in text
+        assert "closest match" in text
+        # Explicit "will NOT silently substitute" clause
+        assert "NOT silently substitute" in text
+
+    def test_never_silently_substitutes(self):
+        """Even when a very close match exists, verify raises."""
+        client = self._client(
+            {"/v1/models": json.dumps({"data": [{"id": "llama3.1"}]}).encode()}
+        )
+        with pytest.raises(ModelNotAvailableError):
+            verify_model_available(client, "llama-3.1")
+
+    def test_falls_back_when_discovery_fails(self):
+        """If every listing path fails at transport, verify returns
+        gracefully instead of raising, so the caller falls back to
+        the configured model without behavior change.
+        """
+        error = urllib.error.URLError("connection refused")
+        get, _ = _http_get_returning(
+            {"/v1/models": error, "/api/tags": error}
+        )
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="anything",
+            http_get=get,
+        )
+        available, closest = verify_model_available(client, "anything")
+        assert available == []
+        assert closest is None
+
+    def test_falls_back_when_endpoint_lists_no_models(self):
+        client = self._client(
+            {"/v1/models": json.dumps({"data": []}).encode()}
+        )
+        available, closest = verify_model_available(client, "anything")
+        assert available == []
+        assert closest is None
+
+    def test_refuses_cloud_model_names(self):
+        client = self._client(
+            {"/v1/models": json.dumps({"data": [{"id": "llama"}]}).encode()}
+        )
+        with pytest.raises(LocalLLMConfigError, match="cloud token"):
+            verify_model_available(client, "openai-gpt-4")
+
+    def test_available_list_is_deterministic(self):
+        response = json.dumps(
+            {"data": [{"id": "z-model"}, {"id": "a-model"}]}
+        ).encode()
+        get, _ = _http_get_returning({"/v1/models": response})
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="a-model",
+            http_get=get,
+        )
+        available_1, _ = verify_model_available(client, "a-model")
+        get2, _ = _http_get_returning({"/v1/models": response})
+        client2 = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="a-model",
+            http_get=get2,
+        )
+        available_2, _ = verify_model_available(client2, "a-model")
+        assert available_1 == available_2
+
+
+class TestModelListingPathsConstant:
+    def test_expected_paths(self):
+        assert MODEL_LISTING_PATHS[0] == "/v1/models"
+        assert MODEL_LISTING_PATHS[1] == "/api/tags"
