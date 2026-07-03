@@ -6,15 +6,15 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 3 Relative Strength Challenger Overlay (`t_phase3_rs_challenger`, Review)
-- Last completed: Phase 3 Champion/Challenger Comparison Harness (`t_phase3_champion_challenger`)
+- Current: Phase 3 Walk-Forward Evaluation Pipeline (`t_phase3_walk_forward`, Ready)
+- Last completed: Phase 3 Relative Strength Challenger Overlay (`t_phase3_rs_challenger`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (RS Challenger overlay implementation)
+- Commit: latest HEAD (RS Challenger overlay validation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: RS Challenger overlay implemented; awaiting Hermes validation
+- Status: RS Challenger overlay validated; Walk-Forward Evaluation Pipeline ready
 
 ## Testing
 - Tests passing: 532

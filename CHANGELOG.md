@@ -8,8 +8,28 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase3_rs_challenger`
+**Commit:** `4569bce`, plus validation board update
+
+### Validation
+- 532 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- Overlay confirmed disabled by default; global `FeatureFlags`
+  singleton remains `all_disabled` after harness runs
+- Champion parity verified when disabled: identical scores, rankings,
+  and explanations; harness records zero disagreements
+- Enabled overlay produces the expected additive contribution and
+  rerank (verified against
+  `weight * (rs - neutral) / range = 0.20 * ±0.4/0.8`)
+- Determinism verified across repeat evaluations and across
+  `generated_at` differences (harness `stable_hash` stable)
+- No `alpaca`, `yfinance`, `TradingClient`, `api_key`, `place_order`,
+  `submit_order`, or order-path references in `strategy/rs_challenger.py`
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase3_rs_challenger` moved to Done
+- Card `t_phase3_walk_forward` unblocked and moved to Ready
 
 ### Added
 - `strategy/rs_challenger.py` — read-only, disabled-by-default RS

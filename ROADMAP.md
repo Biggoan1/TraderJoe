@@ -176,8 +176,8 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_phase3_backtest_lab` | Phase 3: Backtest Lab Foundation | Phase 3 | Done |
 | `t_phase3_data_catalog` | Phase 3: Research Data Catalog | Phase 3 | Done |
 | `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Done |
-| `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Review |
-| `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Backlog |
+| `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Done |
+| `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Ready |
 | `t_phase3_reports` | Phase 3: Research Report Generation | Phase 3 | Backlog |
 | `t_phase3_promotion_gates` | Phase 3: Feature Promotion Gates | Phase 3 | Backlog |
 
@@ -430,11 +430,12 @@ approved production rollout.
 - **Validation outcome:** 500 tests passing; harness confirmed read-only, deterministic (`stable_hash` and `run_id` independent of `generated_at`), and observational; no `alpaca`, `place_order`, `submit_order`, `TradingClient`, or credential/env references; validation paper account remains documentation-only; feature flags remain all disabled; commit `1b341ef` plus policy addendum `a0fa765`.
 
 #### `t_phase3_rs_challenger` — Relative Strength Challenger Overlay
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Implement disabled-by-default Relative Strength score overlay for challenger evaluation only.
 - **Definition of Done:** Overlay produces score deltas and explanations but cannot affect live trading decisions.
 - **Validation:** Tests for score composition, missing RS data, disabled flag defaults, and Champion parity when disabled.
 - **Implementation note:** `strategy/rs_challenger.py` adds `RelativeStrengthChallenger`, a read-only wrapper around any `ComparisonEvaluator`. The overlay is gated by `FeatureFlags.enable_relative_strength` (default `False`, global singleton untouched). When disabled the wrapper is a passthrough — scores, rankings, and explanations mirror the base evaluator so the comparison harness sees zero disagreements. When enabled the wrapper computes `score += weight * (rs - neutral) / range`, clipped to `[neutral - range, neutral + range]`, recomputes rankings by new score desc (tie-break by symbol asc), and emits per-symbol explanations. Missing or malformed RS values are captured as warnings with the base score preserved. RS data comes from a caller-supplied `RelativeStrengthProvider`; the `rs_provider_from_map` helper builds a deterministic provider from a `{timestamp: {symbol: rs}}` snapshot suitable for the Data Catalog. No order-path imports, no live trading impact, no broker credentials, no `yfinance` dependency.
+- **Validation outcome:** 532 tests passing; overlay confirmed disabled by default; global feature flags remain all disabled; Champion parity verified when disabled (harness records zero disagreements); enabled overlay produces the expected score contribution and rerank; determinism verified across repeat evaluations and across `generated_at` differences; no `alpaca`, `yfinance`, `TradingClient`, `api_key`, or order-path references; commit `4569bce`.
 
 #### `t_phase3_walk_forward` — Walk-Forward Evaluation Pipeline
 - **Status:** Backlog
