@@ -1161,7 +1161,7 @@ read-only.  Order-path behavior is untouched throughout.
   (isolation docs) plus `021351f` (launchers + model config).
 
 #### `t_phase5_local_llm_research_assistant` — Local LLM Research Assistant
-- **Status:** Review
+- **Status:** Done
 - **Implementation note:** `strategy/research_analyst.py` adds
   `LocalLLMClient` (loopback-only endpoint check; `temperature=0.0`
   enforced; cloud-model tokens refused;
@@ -1188,6 +1188,25 @@ read-only.  Order-path behavior is untouched throughout.
   future Hermes routing.  Never imports `strategy.config`, no
   cloud-LLM SDK imports, no live-runner imports, terminology audit
   passes.
+- **Validation outcome:** 1157 tests passing (96 analyst tests +
+  1061 baseline).  Loopback-only enforcement verified across
+  `127.0.0.1` / `localhost` / `::1` (accepted) and public IPs /
+  public hostnames / `0.0.0.0` / RFC1918 addresses (rejected at
+  construction).  Cloud model tokens `openai` / `anthropic` /
+  `google` / `azure` / `aws` / `gemini` / `claude` / `chatgpt`
+  refused both at construction and at `effective_model`
+  resolution.  `temperature=0.0` enforced.  System prompt
+  explicitly forbids trade recommendations, feature-flag advocacy,
+  and promotion advocacy; forbidden-output detector catches
+  attempted trade recommendations and Recommendation / Next Steps
+  / Action Items headings in LLM responses.  Narrative and report
+  ids are deterministic given the same source (verified by
+  `test_stable_hash_ignores_generated_at` +
+  `test_narrative_id_deterministic_across_calls`).  No credential
+  reads (no `ALPACA_*` / `APCA_*` / `TELEGRAM_*` / `OPENAI_*`
+  patterns in the module source); global feature flags remain all
+  disabled; no runner / scheduler / Telegram / CLI / plugin
+  touched.  Commit `c846f51`.
 - **Scope:** Add a `LocalLLMClient` protocol and a concrete
   implementation targeting a local endpoint (Ollama / LM Studio).
   Add `LLMSummary` (frozen dataclass with model id, prompt hash,
@@ -1209,9 +1228,7 @@ read-only.  Order-path behavior is untouched throughout.
   module.
 
 #### `t_phase5_two_month_validation_run` — Two-Month Historical Validation
-- **Status:** Backlog (depends on
-  `t_phase5_research_account_api` and
-  `t_phase5_local_llm_research_assistant`)
+- **Status:** Ready
 - **Scope:** Add `HistoricalValidationConfig` and
   `run_historical_validation(config)`.  The orchestrator uses the
   Research Account Client to ingest two months of bars for the

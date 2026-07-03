@@ -8,8 +8,61 @@ Trader Joe release history.
 
 **Date:** 2026-07-03
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase5_local_llm_research_assistant`
+**Commit:** `c846f51`, plus validation board update
+
+### Validation
+- 1157 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- **Local LLM endpoint loopback-only:** runtime check accepts
+  `http://127.0.0.1:*`, `http://localhost:*`, `http://[::1]:*`;
+  rejects public IPs (`8.8.8.8`), public hostnames
+  (`api.openai.com`), `0.0.0.0`, RFC1918 (`192.168.1.10`), and
+  missing schemes
+- **Cloud model names refused:** `openai/*`, `anthropic-*`,
+  `google-*`, `azure-*`, `aws-*`, `gemini`, `claude`, `chatgpt`
+  refused at construction time and at `effective_model`
+  resolution
+- **Temperature pinned to 0.0:** any non-zero value rejected at
+  construction
+- **Output is read-only narrative/report data:** `LLMNarrative`
+  and `ResearchAnalystReport` are the only outputs; write path
+  only touches `<output_dir>/<report_id>/` under a caller-supplied
+  root
+- **No trade recommendations allowed:** system prompt explicitly
+  forbids trade / entry / exit / position-size / hold / sell / buy
+  advocacy; forbidden-output detector flags phrases like
+  `you should buy` and `recommend selling`
+- **No feature-flag advocacy allowed:** system prompt forbids
+  "enable this flag" advocacy; forbidden-output detector catches
+  it in LLM responses
+- **No promotion advocacy allowed:** system prompt forbids
+  "approve this promotion" / "promote to production" advocacy;
+  detector catches `## Recommendation`, `## Next Steps`, and
+  `## Action Items` headings
+- **No credentials exposed:** module source contains no
+  `ALPACA_*` / `APCA_*` / `TELEGRAM_*` / `OPENAI_*` reads; no
+  credential values persisted anywhere
+- **No broker/order-path imports:** module source has no
+  `submit_order` / `place_order` / `cancel_order` /
+  `TradingClient` / `yfinance` / `alpaca` references
+- **No feature flags enabled:** module never imports
+  `strategy.config`; runtime check confirms
+  `FeatureFlags.all_disabled` after analyst run
+- **No buy/sell logic changed:** runner, scheduler, Telegram,
+  CLI, plugin behavior untouched
+- **Deterministic outputs:** narrative id, prompt hash, source
+  hash, and report id are stable across `generated_at`
+  differences (verified by
+  `TestRenderAnalystReport::test_stable_hash_ignores_generated_at`
+  and
+  `TestResearchAnalystAnalyze::test_narrative_id_deterministic_across_calls`);
+  given the same LLM response, the four-file bundle is
+  byte-identical
+- Card `t_phase5_local_llm_research_assistant` moved to Done
+- Card `t_phase5_two_month_validation_run` unblocked and moved
+  to Ready
 
 ### Added
 - `strategy/research_analyst.py` — read-only Research Analyst that
