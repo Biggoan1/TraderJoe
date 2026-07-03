@@ -189,11 +189,23 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 
 ## Phase 3 — Decision Engine
 
-**Status:** DESIGN COMPLETE
+**Status:** COMPLETE (research platform in place; no decision-engine behavior enabled)
 
 **Objective:** Transform Trader Joe from an observational intelligence platform
 into an evidence-driven research platform before any decision-engine behavior is
 enabled.
+
+**Exit state (milestone `v0.17.0-phase3`):**
+- All eight Phase 3 Kanban cards Done (one planning card + seven implementation cards)
+- 656 tests passing
+- No trading behavior, buy/sell logic, runner behavior, or feature flags changed
+- Historical validation paper account remains documentation-only
+- Research stack: `strategy/backtest_lab.py`, `strategy/data_catalog.py`,
+  `strategy/comparison_harness.py`, `strategy/rs_challenger.py`,
+  `strategy/walk_forward.py`, `strategy/research_reports.py`,
+  `strategy/promotion_gates.py`
+- Champion remains production; RS Challenger exists as a disabled-by-default overlay
+  awaiting explicit human approval to advance beyond the `disabled` promotion state
 
 - Relative Strength incorporated into rankings
 - Market Regime incorporated into scoring
