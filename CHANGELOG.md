@@ -8,8 +8,29 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase3_promotion_gates`
+**Commit:** `623b046`, plus validation board update
+
+### Validation
+- 656 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- Default `PromotionEntry` reflects the disabled flag; the promotion
+  machinery cannot silently claim more progress than the code state
+- `report_id` and `stable_hash` independent of `generated_at`
+- Standard rollback criteria trigger under worst-case metrics and pass
+  under safe metrics
+- Missing metrics surface as warnings rather than looking like passes
+- Approved / production states without any `ApprovalRecord` emit a
+  warning
+- No `alpaca`, `yfinance`, `TradingClient`, `api_key`, `place_order`,
+  `submit_order`, or order-path references in
+  `strategy/promotion_gates.py`
+- Global feature flags remain `all_disabled` after evaluation
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase3_promotion_gates` moved to Done
+- **Phase 3 is complete — 7 / 7 cards Done**
 
 ### Added
 - `strategy/promotion_gates.py` — read-only encoding of the Phase 3

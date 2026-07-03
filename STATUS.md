@@ -6,15 +6,15 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 3 Feature Promotion Gates (`t_phase3_promotion_gates`, Review)
-- Last completed: Phase 3 Research Report Generation (`t_phase3_reports`)
+- Current: none (Phase 3 complete)
+- Last completed: Phase 3 Feature Promotion Gates (`t_phase3_promotion_gates`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Promotion gates implementation)
+- Commit: latest HEAD (Promotion gates validation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Feature Promotion Gates implemented; awaiting Hermes validation
+- Status: Phase 3 complete — all seven Phase 3 cards Done
 
 ## Testing
 - Tests passing: 656
@@ -37,6 +37,7 @@
 - TODOs: 12
 
 ## Phase
-- Current: 3 (Decision Engine research platform)
+- Current: 3 (Decision Engine research platform) — complete
 - Phase 1: complete
 - Phase 2: complete (6/6 complete)
+- Phase 3: complete (7/7 complete)

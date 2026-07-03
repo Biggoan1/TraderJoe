@@ -179,7 +179,7 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Done |
 | `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Done |
 | `t_phase3_reports` | Phase 3: Research Report Generation | Phase 3 | Done |
-| `t_phase3_promotion_gates` | Phase 3: Feature Promotion Gates | Phase 3 | Review |
+| `t_phase3_promotion_gates` | Phase 3: Feature Promotion Gates | Phase 3 | Done |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
 
@@ -454,11 +454,12 @@ approved production rollout.
 - **Validation outcome:** 599 tests passing; report_id and stable_hash independent of `generated_at`; byte-identical `to_json`, `to_markdown`, `disagreements_json`, and `manifest_json` across repeat renders; manifest carries source id + source hash; `write` produces all four files, is idempotent, and lands under `<output_dir>/<report_id>/`; no `alpaca`, `yfinance`, `TradingClient`, `api_key`, or order-path references; global feature flags remain all disabled; commit `a2f1940`.
 
 #### `t_phase3_promotion_gates` — Feature Promotion Gates
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Encode promotion-state documentation, approval records, and rollback checks.
 - **Definition of Done:** Promotion reports can prove current state and required evidence for each transition.
 - **Validation:** Tests for gate completeness, missing approval blocks, rollback trigger detection, and disabled defaults.
 - **Implementation note:** `strategy/promotion_gates.py` encodes the seven promotion states (`disabled → backtest → walk_forward → paper_trading → candidate → approved → production`) plus `REQUIRED_EVIDENCE_PER_STATE`, `ApprovalRecord`, `RollbackCriterion`, `RollbackAlert`, `PromotionEntry`, and `PromotionReport`. `evaluate_promotion` returns the current state, next state, required evidence, missing evidence, approvals, and rollback alerts against a caller-supplied metrics dict; missing metrics never look like a pass and are surfaced as warnings. `STANDARD_ROLLBACK_CRITERIA` mirrors the ROADMAP "Failure / Rollback Criteria" list. `PromotionReport.stable_hash` excludes `generated_at`, and `report_id` is derived from a deterministic hash of flag, current/target state, evidence keys, approval count, metric keys, and criterion names. Module never mutates `strategy.config.FeatureFlags`, never imports order paths, and never wires the historical validation paper account.
+- **Validation outcome:** 656 tests passing; default `PromotionEntry` reflects the disabled flag; `report_id` and `stable_hash` independent of `generated_at`; standard rollback criteria trigger under worst-case metrics and pass under safe metrics; missing metrics surface as warnings rather than passes; approved/production states without any `ApprovalRecord` emit a warning; no `alpaca`, `yfinance`, `TradingClient`, `api_key`, or order-path references; module never mutates global feature flags; commit `623b046`.
 
 ### Architectural Risks
 
