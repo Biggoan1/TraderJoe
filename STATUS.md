@@ -6,15 +6,15 @@
 - Challenger: none
 
 ## Sprint
-- Current: Phase 3 Research Data Catalog (`t_phase3_data_catalog`, Review)
-- Last completed: Phase 3 Backtest Lab (`t_phase3_backtest_lab`)
+- Current: Phase 3 Champion/Challenger Comparison Harness (`t_phase3_champion_challenger`, Ready)
+- Last completed: Phase 3 Research Data Catalog (`t_phase3_data_catalog`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Research Data Catalog implementation)
+- Commit: latest HEAD (Research Data Catalog validation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Research Data Catalog implemented; awaiting Hermes validation
+- Status: Research Data Catalog validated; Champion/Challenger Comparison Harness ready
 
 ## Testing
 - Tests passing: 473

@@ -174,8 +174,8 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_5ec6406e` | Sprint 10: Market Breadth Analysis | Phase 2 | Done |
 | `t_phase3_plan` | Phase 3: Decision Engine Technical Design | Phase 3 | Done |
 | `t_phase3_backtest_lab` | Phase 3: Backtest Lab Foundation | Phase 3 | Done |
-| `t_phase3_data_catalog` | Phase 3: Research Data Catalog | Phase 3 | Review |
-| `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Backlog |
+| `t_phase3_data_catalog` | Phase 3: Research Data Catalog | Phase 3 | Done |
+| `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Ready |
 | `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Backlog |
 | `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Backlog |
 | `t_phase3_reports` | Phase 3: Research Report Generation | Phase 3 | Backlog |
@@ -402,11 +402,12 @@ approved production rollout.
 - **Implementation note:** Foundation data contracts are implemented and validated for deterministic config, run metadata, artifact paths, replay event ordering, no-op strategy adapter fixtures, strategy result shells, run manifests, and report serialization. Full historical replay is intentionally deferred.
 
 #### `t_phase3_data_catalog` — Research Data Catalog
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Define dataset manifests for historical bars, benchmarks, paper logs, and research context.
 - **Definition of Done:** Dataset registry can list, validate, and checksum local datasets without mutating them.
 - **Validation:** Tests for missing data, checksum mismatch, schema validation, and reproducibility metadata.
 - **Implementation note:** `strategy/data_catalog.py` implements `DatasetFile`, `DatasetManifest`, `DatasetValidationResult`, and a read-only `DataCatalog` loaded from `research_data/manifests/`. Validation covers missing files, size mismatch, SHA-256 mismatch, and CSV/JSON schema checks. Reproducibility metadata surfaces manifest hash, imported timestamp, and per-file checksums. Operator helper `build_dataset_manifest` computes checksums offline. No production data was imported and no feature flags were enabled.
+- **Validation outcome:** 473 tests passing; catalog confirmed read-only, deterministic, and observational; feature flags remain all disabled; commit `0410aa2`.
 
 #### `t_phase3_champion_challenger` — Champion/Challenger Comparison Harness
 - **Status:** Backlog

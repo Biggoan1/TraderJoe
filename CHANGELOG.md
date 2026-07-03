@@ -8,8 +8,24 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase3_data_catalog`
+**Commit:** `0410aa2`, plus validation board update
+
+### Validation
+- 473 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- Confirmed catalog is read-only (no file/manifest mutation on validate)
+- Confirmed catalog is deterministic (sorted listings, stable manifest hashes)
+- Confirmed reproducibility metadata is stable across repeated calls
+- Confirmed `stable_hash` is independent of `imported_at`
+- Confirmed no references to `alpaca`, `place_order`, `submit_order`, or
+  `TradingClient` in `strategy/data_catalog.py`
+- Confirmed feature flags remain `all_disabled` after catalog operations
+- No trading behavior, buy/sell logic, runner behavior, or feature flags
+  changed
+- Card `t_phase3_data_catalog` moved to Done
+- Card `t_phase3_champion_challenger` unblocked and moved to Ready
 
 ### Added
 - `strategy/data_catalog.py` — read-only Research Data Catalog
