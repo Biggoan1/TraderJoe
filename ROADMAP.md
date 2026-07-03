@@ -177,8 +177,8 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_phase3_data_catalog` | Phase 3: Research Data Catalog | Phase 3 | Done |
 | `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Done |
 | `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Done |
-| `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Review |
-| `t_phase3_reports` | Phase 3: Research Report Generation | Phase 3 | Backlog |
+| `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Done |
+| `t_phase3_reports` | Phase 3: Research Report Generation | Phase 3 | Ready |
 | `t_phase3_promotion_gates` | Phase 3: Feature Promotion Gates | Phase 3 | Backlog |
 
 **Rules:** Observational only. No trading behavior changes. Every feature behind a flag.
@@ -438,11 +438,12 @@ approved production rollout.
 - **Validation outcome:** 532 tests passing; overlay confirmed disabled by default; global feature flags remain all disabled; Champion parity verified when disabled (harness records zero disagreements); enabled overlay produces the expected score contribution and rerank; determinism verified across repeat evaluations and across `generated_at` differences; no `alpaca`, `yfinance`, `TradingClient`, `api_key`, or order-path references; commit `4569bce`.
 
 #### `t_phase3_walk_forward` — Walk-Forward Evaluation Pipeline
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Add time-ordered in-sample / out-of-sample splits and out-of-sample comparison reports.
 - **Definition of Done:** Pipeline runs configured splits and aggregates metrics without future-data leakage.
 - **Validation:** Tests for split boundaries, leakage prevention, and reproducible split manifests.
 - **Implementation note:** `strategy/walk_forward.py` adds `WalkForwardSplit`, `WalkForwardSchedule`, `generate_walk_forward_schedule`, `WalkForwardSplitResult`, `WalkForwardReport`, and `WalkForwardPipeline`. Split constructor enforces `out_of_sample_start > in_sample_end`; schedule constructor enforces strictly time-ordered splits by `out_of_sample_start`. `WalkForwardPipeline.run` groups events by OOS window date lookup, forwards only OOS events to the `ComparisonHarness` (in-sample events are counted for reporting but never reach the harness), and aggregates disagreement counts across splits. `report_id` is derived from `schedule.stable_hash + champion_id + challenger_id + dataset_id + seed + event_count + score_delta_threshold`; `WalkForwardReport.stable_hash` strips `generated_at` from the top level and from every nested comparison metadata for reproducibility. Uses `in-sample` / `out-of-sample` terminology throughout (never "training"). No order-path imports, no live trading impact, no broker credentials.
+- **Validation outcome:** 567 tests passing; leakage prevention verified (in-sample events never reach the harness); split boundaries strictly non-overlapping (OOS start > IS end); determinism verified (report_id and stable_hash independent of `generated_at`); no `alpaca`, `yfinance`, `TradingClient`, `api_key`, or order-path references; global feature flags remain all disabled; commit `01089d3`.
 
 #### `t_phase3_reports` — Research Report Generation
 - **Status:** Backlog

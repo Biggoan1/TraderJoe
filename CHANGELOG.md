@@ -8,8 +8,27 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase3_walk_forward`
+**Commit:** `01089d3`, plus validation board update
+
+### Validation
+- 567 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- Leakage prevention verified: in-sample events never reach the
+  harness (only OOS events populate `ComparisonHarness.run`)
+- Split boundaries strictly non-overlapping (`out_of_sample_start >
+  in_sample_end`) enforced at construction time
+- Determinism verified: `report_id` and `stable_hash` independent of
+  `generated_at`, including nested comparison metadata
+- No `alpaca`, `yfinance`, `TradingClient`, `api_key`, `place_order`,
+  `submit_order`, or order-path references in
+  `strategy/walk_forward.py`
+- Global feature flags remain `all_disabled` after pipeline runs
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase3_walk_forward` moved to Done
+- Card `t_phase3_reports` unblocked and moved to Ready
 
 ### Added
 - `strategy/walk_forward.py` — read-only walk-forward orchestration for

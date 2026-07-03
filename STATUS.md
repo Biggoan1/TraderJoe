@@ -6,15 +6,15 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 3 Walk-Forward Evaluation Pipeline (`t_phase3_walk_forward`, Review)
-- Last completed: Phase 3 Relative Strength Challenger Overlay (`t_phase3_rs_challenger`)
+- Current: Phase 3 Research Report Generation (`t_phase3_reports`, Ready)
+- Last completed: Phase 3 Walk-Forward Evaluation Pipeline (`t_phase3_walk_forward`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Walk-Forward pipeline implementation)
+- Commit: latest HEAD (Walk-Forward validation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Walk-Forward pipeline implemented; awaiting Hermes validation
+- Status: Walk-Forward pipeline validated; Research Report Generation ready
 
 ## Testing
 - Tests passing: 567
