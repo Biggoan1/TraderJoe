@@ -715,7 +715,7 @@ config.
   commit `7005254`.
 
 #### `t_phase4_pattern_discovery` — Historical Pattern Discovery
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Identify co-occurring conditions across regime, sector
   leadership, market breadth, and relative strength history that
   correlate with trade outcomes. Emit `PatternHypothesis` records —
@@ -741,9 +741,17 @@ config.
   Reuses the stats-engine helpers (`normal_mean_ci`,
   `wilson_proportion_ci`, `cohens_d_one_sample`).  Never imports
   `strategy.config`; never references any order-path module.
+- **Validation outcome:** 762 tests passing; all discovered patterns
+  default to `LABEL_HYPOTHESIS`; OOS validation only promotes on
+  matching return direction + matching win-rate direction + OOS
+  sample meeting floor; OOS insufficient sample and directional
+  mismatch keep the record as `LABEL_HYPOTHESIS` with detail notes;
+  determinism verified (shuffled input yields identical output;
+  `hypotheses_stable_hash` order-independent); global feature flags
+  remain all disabled; commit `3711453`.
 
 #### `t_phase4_feature_importance` — Feature Importance Analysis
-- **Status:** Backlog (depends on `t_phase4_stats_engine`)
+- **Status:** Ready
 - **Scope:** Correlate score components, disagreement kinds, and
   market-context features with realized outcomes across the harness
   event windows. Produce ranked `FeatureImportanceScore` records.

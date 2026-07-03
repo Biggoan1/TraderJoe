@@ -8,8 +8,32 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase4_pattern_discovery`
+**Commit:** `3711453`, plus validation board update
+
+### Validation
+- 762 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- All discovered patterns default to `LABEL_HYPOTHESIS`
+- OOS validation only promotes to `LABEL_VALIDATED` when the OOS
+  group meets the sample-size floor, the mean-return direction
+  matches, and the win-rate direction matches
+- OOS insufficient sample surfaces as `LABEL_HYPOTHESIS` with an
+  `insufficient OOS sample` detail note
+- OOS return-direction mismatch surfaces as `LABEL_HYPOTHESIS` with a
+  `return direction mismatch` detail note
+- Determinism verified: shuffled observation input yields identical
+  discovery output; `hypotheses_stable_hash` order-independent
+- No `alpaca`, `yfinance`, `TradingClient`, `api_key`, `place_order`,
+  `submit_order`, or order-path references in
+  `strategy/pattern_discovery.py`
+- Module never imports `strategy.config`, never reads or mutates
+  `FeatureFlags`
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase4_pattern_discovery` moved to Done
+- Card `t_phase4_feature_importance` unblocked and moved to Ready
 
 ### Added
 - `strategy/pattern_discovery.py` — read-only pattern discovery over
