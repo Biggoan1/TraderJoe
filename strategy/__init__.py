@@ -93,6 +93,14 @@ from strategy.rs_challenger import (
     RelativeStrengthProvider,
     rs_provider_from_map,
 )
+from strategy.walk_forward import (
+    WalkForwardPipeline,
+    WalkForwardReport,
+    WalkForwardSchedule,
+    WalkForwardSplit,
+    WalkForwardSplitResult,
+    generate_walk_forward_schedule,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -128,6 +136,12 @@ __all__ = [
     "RelativeStrengthChallenger",
     "RelativeStrengthProvider",
     "rs_provider_from_map",
+    "WalkForwardPipeline",
+    "WalkForwardReport",
+    "WalkForwardSchedule",
+    "WalkForwardSplit",
+    "WalkForwardSplitResult",
+    "generate_walk_forward_schedule",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",

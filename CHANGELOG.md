@@ -4,6 +4,88 @@ Trader Joe release history.
 
 ---
 
+## v0.15.0 — Phase 3: Walk-Forward Evaluation Pipeline
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase3_walk_forward`
+
+### Added
+- `strategy/walk_forward.py` — read-only walk-forward orchestration for
+  the Champion/Challenger comparison harness
+- `WalkForwardSplit` frozen dataclass with in-sample / out-of-sample
+  windows; constructor enforces `out_of_sample_start` strictly after
+  `in_sample_end`
+- `WalkForwardSchedule` frozen dataclass with deterministic
+  `stable_hash` and enforced strictly time-ordered splits
+- `generate_walk_forward_schedule` builds splits from calendar
+  parameters (start/end date, in-sample days, out-of-sample days,
+  step days); returns an empty tuple when the window does not fit
+- `WalkForwardSplitResult` captures per-split event counts, dropped
+  in-sample count, harness comparison output, and disagreement counts
+  by kind
+- `WalkForwardReport` aggregates per-split results, totals disagreements
+  by kind across splits, and records unassigned events; `stable_hash`
+  strips `generated_at` from the report and from every nested
+  comparison metadata
+- `WalkForwardPipeline` groups events by an OOS-date lookup and
+  forwards only OOS events to a fresh `ComparisonHarness` per split;
+  in-sample events are counted for reporting but never reach the
+  harness
+- `report_id` derived from schedule hash + champion/challenger ids +
+  dataset id + seed + event count + score-delta threshold
+- Uses `in-sample` / `out-of-sample` terminology; never "training"
+
+### Tests
+- `tests/test_walk_forward.py` — 35 tests covering:
+  - `WalkForwardSplit` roundtrip, `contains_in_sample` /
+    `contains_out_of_sample`, and every constructor validation error
+    including the strictly-after-IS rule
+  - Schedule generator: basic layout, no overlap within a split,
+    time-ordered splits, end-date boundary, empty schedule when window
+    too small, determinism, and every parameter validation error
+  - `WalkForwardSchedule.stable_hash` determinism and sensitivity to
+    config changes; rejection of out-of-order splits at construction
+  - Pipeline leakage: in-sample events counted as `dropped_event_count`
+    and never reach the harness; events outside every window recorded
+    as `total_unassigned_events` with a warning
+  - Per-split aggregation: `ranking_only` and `score_delta` counts
+    partition correctly across splits; totals sum across splits;
+    `total_out_of_sample_events` matches OOS events
+  - `report_id` stable across `generated_at`; changes with dataset id;
+    `stable_hash` independent of `generated_at` at every nesting level
+  - Report serialization roundtrips via `to_json`
+  - Pipeline construction rejects negative threshold and exposes
+    champion/challenger ids
+  - RS Challenger integration: disabled overlay yields zero
+    disagreements; global feature flags remain `all_disabled`
+  - Source-level ban on `alpaca`, `place_order`, `submit_order`,
+    `TradingClient`, `api_key`, and `yfinance`
+  - Terminology check: only the one explanatory sentence containing
+    `training` (inside quotes) is present; no other `training` usage
+  - Import-time exclusion of `trader_cli`, `trader`, `crypto_trader`,
+    `telegram_approvals`
+  - Global feature flags remain `all_disabled` after pipeline runs
+- 567 passing total (0 failures)
+
+### Changed
+- ROADMAP `t_phase3_walk_forward` scope phrasing updated from
+  "train/evaluate splits" to "in-sample / out-of-sample splits" for
+  consistency with the terminology rule.
+
+### Notes
+- Pipeline is behavior-neutral: production Champion path is unchanged;
+  runner, scheduler, Telegram, CLI, and plugin behavior are untouched
+- No feature flags enabled globally; RS Challenger integration uses a
+  locally-scoped `FeatureFlags` instance
+- No `yfinance`, HTTP, or broker credentials touched
+- Historical validation paper account remains documentation-only
+- Reports (`t_phase3_reports`) and promotion gates
+  (`t_phase3_promotion_gates`) remain in Backlog
+
+---
+
 ## v0.14.0 — Phase 3: Relative Strength Challenger Overlay
 
 **Date:** 2026-07-02
