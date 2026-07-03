@@ -42,4 +42,4 @@
 - Phase 2: complete (6/6 complete)
 - Phase 3: complete (7/7 complete)
 - Phase 4: complete (7/7 complete)
-- Phase 5: design complete (1/4 planning cards Done; 3 implementation cards queued)
+- Phase 5: 1 planning card Done; 1 Ready; 2 in Backlog
