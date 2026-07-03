@@ -952,7 +952,7 @@ config.
 
 ## Phase 6 — Production Readiness
 
-**Status:** PLANNED
+**Status:** PLANNED (v1.0 definition captured)
 
 **Objective:** Prepare for live trading.
 
@@ -963,6 +963,109 @@ config.
 - Deployment and disaster recovery procedures
 
 **Promotion Criteria:** Sustained performance over a statistically meaningful sample.
+
+### v1.0 Production Readiness — Definition
+
+**What v1.0 means.** The first release authorized to place live
+orders through an approved feature-flag scope. Before v1.0, Trader
+Joe is a research + paper-trading + recommendation platform; at v1.0
+it becomes capable of live trading under human-approved,
+human-monitored conditions.
+
+**What v1.0 is NOT.**
+
+- Not full autonomy — every promotion to `production` still
+  requires a human `ApprovalRecord` authored per the
+  `t_phase3_promotion_gates` machinery.
+- Not a green light to enable every feature flag — each flag
+  transitions through the seven promotion states independently.
+- Not a substitute for the rollback criteria in
+  `strategy.promotion_gates.STANDARD_ROLLBACK_CRITERIA`.
+- Not achievable without complete Phase 5 (Research Platform) work.
+- Not compatible with any code path that imports order-path modules
+  from a Phase 3 or Phase 4 module (the Phase 4 e2e test suite
+  enforces this at CI time).
+
+**Prerequisites (must all hold).**
+
+- Phases 1-4 complete. Currently satisfied.
+- Phase 5 (Research Platform) complete.
+- Live broker integration exists but is isolated: no Phase 1-4
+  module may import it, and no Phase 1-4 module may share
+  credentials with it.
+- The historical validation paper account remains
+  documentation-only and is never wired into the live runner.
+- A `DataCatalog` manifest exists covering the evaluation window
+  chosen by the approving human.
+- A `WalkForwardReport` exists for the Champion and for every
+  Challenger under consideration for promotion.
+- A `LearningReport` exists tying feature-importance evidence to
+  every `WeightRecommendation` that would advance beyond
+  `paper_trading` under the requested `ApprovalRecord`.
+- Every `PromotionEntry` for a production-bound flag carries a
+  current `ApprovalRecord` naming approver, dated timestamp,
+  scope, monitoring dashboard reference, and rollback plan.
+
+**Promotion criteria (per feature flag proposed for `production`).**
+
+1. `PromotionEntry.current_state == "approved"` with at least one
+   valid `ApprovalRecord` present on the entry.
+2. `evaluate_promotion` returns no `triggered=True` alerts across
+   the standard rollback criteria over the approved evaluation
+   window.
+3. Walk-forward evidence shows expectancy at or above Champion
+   over the same window.
+4. At least one uninterrupted `paper_trading` window completed
+   without regression on any rollback criterion.
+5. Rollback owner named on the `ApprovalRecord`.
+6. Rollback plan documented and dry-run tested at least once in
+   the last 30 days.
+7. Kill switch verified end-to-end.
+
+**Rollback triggers (already codified).**
+
+- Any of the seven `STANDARD_ROLLBACK_CRITERIA` triggers at
+  runtime.
+- Any required evidence key is missing from the
+  `PromotionEntry`.
+- Any order-path behavior change lands outside the approved
+  feature-flag scope.
+- Any commit modifies `strategy/config.py` without a linked
+  `ApprovalRecord`.
+- Any test-suite regression on the release commit.
+- Any Phase 4 module gains an import from `trader.py`,
+  `crypto_trader.py`, `strategy/runner.py`, `trader_cli.py`, or
+  `telegram_approvals.py`.
+
+**Metrics thresholds.**
+
+Numeric thresholds are intentionally not set here. The active
+`ApprovalRecord` names the thresholds it will hold. The Phase 4
+weight recommender already refuses to target thresholds above
+`paper_trading`, so any threshold recommendation destined for
+`production` must be authored by a human as an `ApprovalRecord`.
+
+**Exit criteria for the `v1.0` release tag.**
+
+- All prerequisites above satisfied.
+- Champion or approved Challenger has run under an
+  `ApprovalRecord` for at least one full evaluation window
+  without triggering any rollback criterion.
+- No open P0 / P1 issues.
+- Full test suite at 100 % pass rate on the release commit.
+- Rollback drill executed and documented within the last 30 days.
+- STATUS.md, CHANGELOG.md, and KANBAN.md reference the release
+  commit and the approving `ApprovalRecord` id.
+
+**Non-negotiable invariants across v1.0 and beyond.**
+
+- Champion behavior is preserved for any flag not explicitly
+  advanced to `production` under a live `ApprovalRecord`.
+- Recommendations never mutate `strategy/config.py`; humans do.
+- The Learning System never advances promotion state on its own.
+- The historical validation paper account is never used by the
+  live runner and never shares credentials with production.
+- Terminology: validation, replay, research — never "training".
 
 ---
 
