@@ -4,6 +4,91 @@ Trader Joe release history.
 
 ---
 
+## v0.21.0 — Phase 4: Strategy Weight Recommender
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase4_weight_recommender`
+
+### Added
+- `strategy/weight_recommender.py` — read-only recommender that turns
+  feature-importance scores into `WeightRecommendation` data
+  artifacts
+- `WeightRecommendation` frozen dataclass with target config key,
+  current and proposed value, rationale, supporting feature scores,
+  required promotion state, confidence level, and label
+- `RecommendationEnvelope` frozen dataclass that routes a
+  recommendation into `PromotionEntry.evidence` via a configurable
+  `evidence_key`; `apply_to_entry` returns a new `PromotionEntry`
+  and never mutates the input
+- Hard promotion ceiling: `MAX_ALLOWED_PROMOTION_STATE =
+  STATE_PAPER_TRADING`;
+  `FORBIDDEN_PROMOTION_STATES_FOR_RECOMMENDER` covers `candidate`,
+  `approved`, and `production`; refusal enforced both in
+  `recommend_weights` and by `WeightRecommendation.__post_init__`
+- `recommend_weights(feature_scores, current_weights, ...)` scales
+  each matched weight by `max_change_pct * sign(score)`; skips
+  features that are hypothesis-labeled, flagged
+  `low_sample` / `zero_variance` / `ci_spans_zero`, below
+  `min_feature_score`, or absent from `current_weights`
+- `envelope_for`, `build_recommendation_id`, `build_envelope_id`,
+  and `recommendations_stable_hash` helpers
+
+### Tests
+- `tests/test_weight_recommender.py` — 53 tests covering:
+  - `WeightRecommendation` roundtrip, delta computation, and every
+    validation error
+  - Allowed promotion states (disabled, backtest, walk_forward,
+    paper_trading) accepted; forbidden states (candidate, approved,
+    production) rejected at construction; unknown state rejected
+  - `MAX_ALLOWED_PROMOTION_STATE == STATE_PAPER_TRADING`; allowed +
+    forbidden sets partition all seven promotion states
+  - `RecommendationEnvelope`: requires ids and evidence key;
+    `to_evidence_value` deterministic JSON; `apply_to_entry` returns
+    new entry without mutating the input; supports custom
+    `evidence_key`; preserves existing evidence; `to_dict` JSON
+    serializable
+  - `recommend_weights`: positive score scales weight up; negative
+    score scales weight down; hypothesis scores skipped when
+    `require_validated=True`; included when `require_validated=False`;
+    features not in `current_weights` skipped; CI spanning zero
+    skipped when `require_significant=True`; `low_sample` and
+    `zero_variance` flags skip a feature; below `min_feature_score`
+    skipped; refuses to target forbidden states; refuses unknown
+    state; refuses non-positive or >1.0 `max_change_pct`; refuses
+    negative `min_feature_score`; recommendations sorted
+    deterministically; validated recommendation label set
+  - Determinism: repeat recommendations byte-identical;
+    `recommendations_stable_hash` order-independent;
+    `build_recommendation_id` deterministic;
+    `build_envelope_id` differs across `evidence_key` values
+  - **Config immutability:** module source contains no
+    `open(strategy/config.py`, no `config_path`, and no `"w"` /
+    `'w'` write mode markers; module source does not import
+    `strategy.config`; running the recommender + envelope leaves
+    `strategy/config.py` bytes unchanged
+  - Observational-only: no `alpaca`, `place_order`, `submit_order`,
+    `TradingClient`, `api_key`, or `yfinance` references;
+    terminology check; module never mutates global feature flags;
+    import-time exclusion of `trader_cli`, `trader`, `crypto_trader`,
+    `telegram_approvals`
+- 867 passing total (0 failures)
+
+### Notes
+- Module is behavior-neutral: production Champion path is unchanged;
+  runner, scheduler, Telegram, CLI, and plugin behavior untouched
+- No feature flags enabled; module never imports `strategy.config`
+- No broker credentials, HTTP calls, or historical validation paper
+  account wiring
+- Approvals are still data artifacts — this module never constructs
+  an `ApprovalRecord` autonomously; human approval remains required
+  before any promotion to `candidate`, `approved`, or `production`
+- Follow-up cards remain in Backlog: `t_phase4_learning_reports`,
+  `t_phase4_validation`
+
+---
+
 ## v0.20.0 — Phase 4: Feature Importance Analysis
 
 **Date:** 2026-07-02

@@ -180,6 +180,19 @@ from strategy.feature_importance import (
     importance_stable_hash,
     pearson_r,
 )
+from strategy.weight_recommender import (
+    ALLOWED_PROMOTION_STATES_FOR_RECOMMENDER,
+    DEFAULT_EVIDENCE_KEY,
+    DEFAULT_MAX_WEIGHT_CHANGE_PCT,
+    DEFAULT_MIN_FEATURE_SCORE,
+    FORBIDDEN_PROMOTION_STATES_FOR_RECOMMENDER,
+    MAX_ALLOWED_PROMOTION_STATE,
+    RecommendationEnvelope,
+    WeightRecommendation,
+    envelope_for,
+    recommend_weights,
+    recommendations_stable_hash,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -290,6 +303,17 @@ __all__ = [
     "fisher_z_ci",
     "importance_stable_hash",
     "pearson_r",
+    "ALLOWED_PROMOTION_STATES_FOR_RECOMMENDER",
+    "DEFAULT_EVIDENCE_KEY",
+    "DEFAULT_MAX_WEIGHT_CHANGE_PCT",
+    "DEFAULT_MIN_FEATURE_SCORE",
+    "FORBIDDEN_PROMOTION_STATES_FOR_RECOMMENDER",
+    "MAX_ALLOWED_PROMOTION_STATE",
+    "RecommendationEnvelope",
+    "WeightRecommendation",
+    "envelope_for",
+    "recommend_weights",
+    "recommendations_stable_hash",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",

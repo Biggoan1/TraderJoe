@@ -66,6 +66,6 @@ Hermes is not orchestrating this work item. Current repository snapshot:
 | `t_phase4_stats_engine` | Phase 4: Statistical Decision-Support Layer | Phase 4 | Done |
 | `t_phase4_pattern_discovery` | Phase 4: Historical Pattern Discovery | Phase 4 | Done |
 | `t_phase4_feature_importance` | Phase 4: Feature Importance Analysis | Phase 4 | Done |
-| `t_phase4_weight_recommender` | Phase 4: Strategy Weight Recommender | Phase 4 | Ready |
+| `t_phase4_weight_recommender` | Phase 4: Strategy Weight Recommender | Phase 4 | Review |
 | `t_phase4_learning_reports` | Phase 4: Learning Report Generation | Phase 4 | Backlog |
 | `t_phase4_validation` | Phase 4: End-to-End Learning System Validation | Phase 4 | Backlog |

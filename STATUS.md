@@ -6,18 +6,18 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 4 Strategy Weight Recommender (`t_phase4_weight_recommender`, Ready)
+- Current: Phase 4 Strategy Weight Recommender (`t_phase4_weight_recommender`, Review)
 - Last completed: Phase 4 Feature Importance Analysis (`t_phase4_feature_importance`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Feature importance validation)
+- Commit: latest HEAD (Weight recommender implementation)
 - Tags: v0.4.0 (Phase 1 baseline), v0.10.0-phase2 (Phase 2), v0.17.0-phase3 (Phase 3)
-- Status: Feature importance validated; Strategy Weight Recommender ready
+- Status: Weight recommender implemented; awaiting Hermes validation
 
 ## Testing
-- Tests passing: 814
+- Tests passing: 867
 - Tests failing: 0
 - Last run: 2026-07-02
 

@@ -784,7 +784,7 @@ config.
   feature flags remain all disabled; commit `22259ad`.
 
 #### `t_phase4_weight_recommender` — Strategy Weight Recommender
-- **Status:** Ready
+- **Status:** Review
 - **Scope:** Suggest adjusted weights for Champion scoring components
   (e.g., `SELL_SCORE_FACTOR_WEIGHTS`) based on feature-importance
   output. Emit `WeightRecommendation` records that name the target
@@ -796,6 +796,24 @@ config.
 - **Validation:** Tests for config-write refusal, `RecommendationEnvelope`
   round-trip through `PromotionEntry.evidence`, and refusal to
   recommend `production` directly.
+- **Implementation note:** `strategy/weight_recommender.py` adds
+  `WeightRecommendation`, `RecommendationEnvelope`,
+  `recommend_weights`, `envelope_for`, and
+  `recommendations_stable_hash`.  `MAX_ALLOWED_PROMOTION_STATE` is
+  `STATE_PAPER_TRADING`; `FORBIDDEN_PROMOTION_STATES_FOR_RECOMMENDER`
+  covers `candidate` / `approved` / `production` and is enforced both
+  at the `recommend_weights` entry point and by the
+  `WeightRecommendation.__post_init__` validator.  Recommendations are
+  skipped for feature scores that are hypothesis-labeled, flagged
+  `low_sample` / `zero_variance` / `ci_spans_zero`, below the
+  configurable `min_feature_score`, or absent from the caller's
+  `current_weights` dict.  `envelope_for` builds a
+  `RecommendationEnvelope` whose `apply_to_entry` returns a new
+  `PromotionEntry` (never mutates the input) with a serialized
+  recommendation added under a configurable `evidence_key`.  Module
+  never imports `strategy.config`; unit tests read
+  `strategy/config.py` bytes before and after a recommender run and
+  assert byte-identical content.
 
 #### `t_phase4_learning_reports` — Learning Report Generation
 - **Status:** Backlog (depends on all four analysis cards)
