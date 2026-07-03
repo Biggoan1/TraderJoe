@@ -17,7 +17,7 @@
 - Status: Research Alpaca client validated + env isolation + launchers + model config; Local LLM Research Assistant ready
 
 ## Testing
-- Tests passing: 1198
+- Tests passing: 1454
 - Tests failing: 0
 - Last run: 2026-07-03
 
@@ -37,12 +37,12 @@
 - TODOs: 12
 
 ## Phase
-- Current: 5.6 (Historical Data Warehouse) — planning complete, 12 implementation cards ready
+- Current: 5.6 (Historical Data Warehouse) — first implementation card in Review
 - Phase 1: complete
 - Phase 2: complete (6/6 complete)
 - Phase 3: complete (7/7 complete)
 - Phase 4: complete (7/7 complete)
 - Phase 5: complete (4/4 complete)
-- Phase 5 follow-ups: `t_phase5_rs_live_feed` (76637cc) and `t_phase5_champion_explanations` (b806e9f, f1d1658, f46a548) — in Review
+- Phase 5 follow-ups (Done): `t_phase5_rs_live_feed` (76637cc), `t_phase5_champion_explanations` (b806e9f + f1d1658 + f46a548)
 - Phase 5.5 (planned): Research & Learning Dashboard — 1 planning card in Backlog
-- Phase 5.6 (planned): Historical Data Warehouse — planning card `t_90ca9e6f` Done (727ce8d); 12 implementation cards Ready. Non-blocking for v1.0. Storage architecture: DuckDB + Parquet + SQLite (hybrid). Design doc: `docs/architecture/phase-5-6-historical-warehouse.md`.
+- Phase 5.6 (in progress): Historical Data Warehouse — planning card `t_90ca9e6f` Done. 1 implementation card in Review (`t_1c8a70da` — MarketDataProvider interface); 11 remaining implementation cards Ready. Non-blocking for v1.0. Storage architecture: DuckDB + Parquet + SQLite (hybrid). Design doc: `docs/architecture/phase-5-6-historical-warehouse.md`.

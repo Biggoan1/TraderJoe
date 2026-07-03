@@ -4,6 +4,68 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: MarketDataProvider interface
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase56_provider_interface` (`t_1c8a70da`)
+
+### Added
+- `strategy/market_data_provider.py` — provider-agnostic market
+  data interface, foundation card for Phase 5.6 Historical Data
+  Warehouse.  Read-only, no plugin implementations.
+- Normalized data models: `Bar`, `CorporateAction`, `SymbolMetadata`,
+  `CalendarDay`, `ProviderCapabilities`, `ProviderResponse[T]`.  All
+  frozen dataclasses with deterministic `to_dict()` serialization
+  and content-level invariant validation on construction.
+- Enums: `BarInterval` (DAILY / HOURLY / MINUTE_{1,5,15,30} / SECOND_1
+  with Alpaca-shaped string values), `AdjustmentMode` (RAW / SPLIT /
+  SPLIT_DIVIDEND / TOTAL_RETURN), `CorporateActionKind` (7 kinds
+  covering splits, reverse splits, cash/special dividends, ticker
+  changes, delistings, mergers), `CalendarSessionKind`, `AssetClass`.
+- `MarketDataProvider` `typing.Protocol` (runtime_checkable) with
+  the five documented fetch methods (`fetch_daily_bars`,
+  `fetch_intraday_bars`, `fetch_corporate_actions`,
+  `fetch_symbol_metadata`, `fetch_calendar`) plus
+  `provider_capabilities`.  Structural per-symbol issues report
+  via `ProviderResponse.per_symbol_status`; wholesale failures
+  raise `MarketDataRequestError`.
+- Error classes: `MarketDataValidationError` (dataclass invariants),
+  `MarketDataRequestError` (provider transport failures).
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports (`trader`, `crypto_trader`, `trader_cli`,
+  `telegram_approvals`, `strategy.runner`).
+- No order-path token references (`submit_order`, `place_order`,
+  `cancel_order`, `TradingClient`, …).
+- No yfinance / pandas dependency.
+- No credential env-var reads at the interface layer (plugins own
+  their own credential namespaces).
+- No `ApprovalRecord` or `PromotionEntry` construction.
+- No file writes.
+- Global `FeatureFlags.all_disabled == True` after module import
+  and every stub-provider use.
+- Terminology: validation / replay / research / acquisition.
+
+### Testing
+- +65 new tests in `tests/test_market_data_provider.py`.
+- Total suite: 1454 passing (was 1389; +65 net new).
+- Coverage: enum values, data-model invariants,
+  serialization round-trips, credential-leak guardrail on
+  `ProviderResponse.request_url_redacted`, protocol conformance
+  via a `FakeProvider` stub, source-safety scan, feature-flag
+  invariance.
+
+### Not in this card (deferred to subsequent Phase 5.6 cards)
+- Any provider plugin implementation (Alpaca, Polygon, Databento,
+  Tiingo, FMP, Alpha Vantage, CSV, Parquet, manual).
+- Warehouse storage (Parquet / DuckDB / SQLite).
+- Import pipelines, incremental sync, gap detection.
+- New dependency additions (`pyarrow`, `duckdb-python`).
+
+---
+
 ## v0.26.0 — Phase 5: Two-Month Historical Validation
 
 **Date:** 2026-07-03
