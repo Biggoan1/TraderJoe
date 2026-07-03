@@ -8,8 +8,29 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase3_reports`
+**Commit:** `a2f1940`, plus validation board update
+
+### Validation
+- 599 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- `report_id` and `stable_hash` independent of `generated_at` for both
+  comparison and walk-forward reports
+- Repeat renders with the same `generated_at` produce byte-identical
+  `to_json`, `to_markdown`, `disagreements_json`, and `manifest_json`
+- Manifest carries source id + source hash for reproducibility
+- `write` persists all four files (`report.md`, `report.json`,
+  `disagreements.json`, `manifest.json`), is idempotent, and lands
+  under `<output_dir>/<report_id>/`
+- No `alpaca`, `yfinance`, `TradingClient`, `api_key`, `place_order`,
+  `submit_order`, or order-path references in
+  `strategy/research_reports.py`
+- Global feature flags remain `all_disabled` after render + write
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase3_reports` moved to Done
+- Card `t_phase3_promotion_gates` unblocked and moved to Ready
 
 ### Added
 - `strategy/research_reports.py` — read-only research report renderers

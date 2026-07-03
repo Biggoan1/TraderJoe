@@ -6,15 +6,15 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 3 Research Report Generation (`t_phase3_reports`, Review)
-- Last completed: Phase 3 Walk-Forward Evaluation Pipeline (`t_phase3_walk_forward`)
+- Current: Phase 3 Feature Promotion Gates (`t_phase3_promotion_gates`, Ready)
+- Last completed: Phase 3 Research Report Generation (`t_phase3_reports`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Research report generator implementation)
+- Commit: latest HEAD (Research report generator validation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Research Report Generation implemented; awaiting Hermes validation
+- Status: Research Report Generation validated; Feature Promotion Gates ready
 
 ## Testing
 - Tests passing: 599
