@@ -4,6 +4,112 @@ Trader Joe release history.
 
 ---
 
+## v0.17.0 — Phase 3: Feature Promotion Gates
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase3_promotion_gates`
+
+### Added
+- `strategy/promotion_gates.py` — read-only encoding of the Phase 3
+  feature-flag promotion process
+- Ordered promotion states:
+  `disabled → backtest → walk_forward → paper_trading → candidate →
+  approved → production`
+- `REQUIRED_EVIDENCE_PER_STATE` maps each target state to the required
+  evidence keys pulled from the ROADMAP "Feature Flag Promotion Process"
+  table; `APPROVAL_EVIDENCE_KEY` is a virtual key satisfied by any
+  `ApprovalRecord` on the entry
+- `ApprovalRecord` frozen dataclass with mandatory approver, date,
+  flag name, scope, monitoring, and rollback-plan fields
+- `RollbackCriterion` frozen dataclass with `lt` / `le` / `gt` / `ge`
+  / `eq` comparators; missing metrics never look like a pass
+- `RollbackAlert` frozen dataclass carries `triggered`,
+  `data_available`, and a human-readable detail
+- `STANDARD_ROLLBACK_CRITERIA` mirrors the ROADMAP "Failure /
+  Rollback Criteria" list (expectancy delta, drawdown delta, profit
+  factor delta, trade frequency, concentration, data quality,
+  reproducibility)
+- `PromotionEntry` mutable dataclass carries the current state (default
+  `disabled`), recorded evidence dict, approvals list, and free-form
+  notes; validates flag_name and refuses approvals that name a
+  different flag
+- `evaluate_promotion(entry, metrics, rollback_criteria, generated_at)`
+  returns a `PromotionReport` with current state, next state, required
+  evidence, missing evidence, approval dicts, per-criterion rollback
+  alerts, warnings, and `generated_at`
+- `PromotionReport.stable_hash` excludes `generated_at`; `report_id`
+  derived from a deterministic hash of flag, current/target state,
+  evidence keys, approval count, metric keys, and criterion names
+- `PromotionReport.to_markdown` renders `# Promotion Report`,
+  `## Current State`, `## Required Evidence for Next Transition`
+  (marked ✓/✗), `## Approvals`, `## Rollback Checks` (marked `!`/`·`),
+  and an optional `## Warnings` section
+- `next_state` / `state_index` / `is_terminal_state` helpers and a
+  `triggered_alerts` convenience for filtering serialized alerts
+
+### Tests
+- `tests/test_promotion_gates.py` — 57 tests covering:
+  - Promotion state ordering; `state_index`; `next_state` progression;
+    terminal state; rejection of unknown states
+  - `REQUIRED_EVIDENCE_PER_STATE` covers every state; disabled requires
+    no evidence; approved and production require the approval-record
+    virtual key
+  - `ApprovalRecord` roundtrip and validation errors for every required
+    field
+  - `RollbackCriterion` for every comparator; missing metric → non-
+    triggered alert with `data_available=False`; invalid comparator
+    rejected at construction; empty name rejected; standard criteria
+    inventory present
+  - `PromotionEntry` defaults to disabled, rejects unknown states,
+    rejects mismatched approval flag names, roundtrips through
+    `to_dict`
+  - `evaluate_promotion`:
+    - Disabled entry lists backtest requirements without emitting a
+      missing-evidence warning
+    - Backtest entry with all evidence flags no missing keys
+    - Candidate entry without approval flags approval_record missing
+    - Approved state without any ApprovalRecord emits a warning
+    - Terminal (Production) has no next state and no required evidence
+    - Standard rollback criteria trigger correctly with worst-case
+      metrics
+    - Standard rollback criteria pass with safe metrics
+    - Missing metrics produce warnings and never look like a pass
+    - Custom criteria override the standard set
+    - `report_id` is deterministic across `generated_at`
+    - `report_id` changes when the evidence set changes
+  - `PromotionReport`:
+    - `stable_hash` excludes `generated_at`
+    - `to_json` schema covers every documented key
+    - Markdown contains all required sections and the flag name
+    - Missing evidence marked `✗`; satisfied evidence marked `✓`
+  - Observational-only:
+    - No `alpaca`, `place_order`, `submit_order`, `TradingClient`,
+      `api_key`, or `yfinance` references
+    - Terminology check: only the one explanatory sentence containing
+      `training` (inside quotes) is present
+    - `evaluate_promotion` never mutates global feature flags
+    - Import-time exclusion of `trader_cli`, `trader`, `crypto_trader`,
+      `telegram_approvals`
+    - Default `PromotionEntry` reflects the disabled flag default so
+      the promotion machinery cannot silently claim more progress than
+      the code state supports
+- 656 passing total (0 failures)
+
+### Notes
+- Module is behavior-neutral: production Champion path is unchanged;
+  runner, scheduler, Telegram, CLI, and plugin behavior are untouched
+- No feature flags enabled; `strategy/config.py` untouched
+- No credentials, env plumbing, or historical validation paper account
+  wiring
+- Approvals are data artifacts — this module never constructs one
+  autonomously; callers build them from repository documentation or
+  operations records before passing them in
+- Phase 3 backlog is now empty pending Hermes validation of this card
+
+---
+
 ## v0.16.0 — Phase 3: Research Report Generation
 
 **Date:** 2026-07-02

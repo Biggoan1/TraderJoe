@@ -1,23 +1,23 @@
 # Trader Joe — Status
 
 ## Version
-- Current: v0.16.0
+- Current: v0.17.0
 - Champion: v0.4.0
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 3 Feature Promotion Gates (`t_phase3_promotion_gates`, Ready)
+- Current: Phase 3 Feature Promotion Gates (`t_phase3_promotion_gates`, Review)
 - Last completed: Phase 3 Research Report Generation (`t_phase3_reports`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Research report generator validation)
+- Commit: latest HEAD (Promotion gates implementation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Research Report Generation validated; Feature Promotion Gates ready
+- Status: Feature Promotion Gates implemented; awaiting Hermes validation
 
 ## Testing
-- Tests passing: 599
+- Tests passing: 656
 - Tests failing: 0
 - Last run: 2026-07-02
 
