@@ -4,6 +4,91 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Local historical warehouse layout
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase56_local_warehouse` (`t_b2a75ee8`)
+
+### Added
+- `strategy/local_warehouse.py` — foundation for the Historical
+  Data Warehouse: canonical directory tree, layout model, path
+  helpers, immutable-manifest guarantee.  Layout only — no bar
+  I/O, no Parquet, no DuckDB, no provider plugins.
+- `WarehouseLayout` (frozen dataclass) — derives every canonical
+  subdirectory from a single `root` path.  Class methods
+  `default()` and `from_env()` for zero-config bootstrap; the
+  `WAREHOUSE_ROOT` env var (disjoint from every provider
+  credential namespace) selects the root location.
+- Canonical subdirectory constants (`REQUIRED_SUBDIRS`):
+  `equities/{daily,hourly,minute}`, `crypto`, `options`,
+  `metadata`, `manifests`, `versions`.  `create()` builds them
+  idempotently; `verify()` refuses to run against a tree missing
+  or malformed a required subdirectory.
+- Deterministic path helpers: `dataset_dir(dataset_id,
+  asset_class, interval)`, `manifest_path(dataset_id)`,
+  `version_dir(dataset_id, version)`.  ETFs route to equities;
+  the four minute-scale intervals plus `SECOND_1` route to the
+  minute partition; unsupported partitions raise.
+- Manifest lifecycle vocabulary: `STATUS_UNVALIDATED`,
+  `STATUS_VALIDATING`, `STATUS_VALIDATED`, `STATUS_QUARANTINED`.
+- `write_manifest(layout, dataset_id, manifest, force=False)` —
+  atomic (temp file + `os.replace`) write that refuses to
+  overwrite a validated manifest without an explicit `force=True`.
+  Unknown status values are rejected on write.  Serialization is
+  deterministic (`sort_keys=True`, trailing newline) so a rerun
+  produces a byte-identical file.
+- `read_manifest`, `is_validated`, `refuse_overwrite_of_validated`
+  — the immutability guardrail every downstream write path calls
+  before touching disk.
+- `WarehouseIntegrityError` — the module's single error class for
+  every violated invariant (missing directory, wrong type,
+  malformed JSON, forbidden overwrite, path traversal in
+  `dataset_id`).
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports (`trader`, `crypto_trader`,
+  `trader_cli`, `telegram_approvals`, `strategy.runner`).
+- No order-path token references.
+- No provider plugin imports (Alpaca, Polygon, Databento, Tiingo,
+  `strategy.providers`, `alpaca_trade_api`).
+- No yfinance / pandas dependency.
+- No provider credential env reads (`ALPACA_*`, `APCA_*`,
+  `RESEARCH_ALPACA_*`, `CRYPTO_ALPACA_*`).  Only the
+  `WAREHOUSE_*` namespace is consulted.
+- No `ApprovalRecord` or `PromotionEntry` construction.
+- Global `FeatureFlags.all_disabled == True` after module
+  import, layout construction, manifest writes.
+- Terminology: validation / replay / research / acquisition.
+
+### Testing
+- +65 new tests in `tests/test_local_warehouse.py` under
+  `pytest.tmp_path` — no touching of the repo's `market_data/`
+  tree.
+- Total suite: **1519 passing** (was 1454; +65 net new).
+- Coverage: canonical constants, `WarehouseLayout` accessors,
+  `create()` idempotency, `verify()` positive + missing-dir +
+  wrong-type paths, `dataset_dir` routing (equity / ETF / crypto,
+  daily / hourly / minute / second), path-traversal rejection in
+  `dataset_id`, deterministic byte-identical manifest writes,
+  read/write/status round-trips, immutability enforcement
+  (validated cannot overwrite without `force`; unvalidated /
+  quarantined can), `is_validated` including corrupt-manifest
+  case, `refuse_overwrite_of_validated` gate on every write
+  boundary, atomic-write leaves no stray temp files, source
+  safety, feature-flag invariance.
+
+### Not in this card (deferred to subsequent Phase 5.6 cards)
+- Bar I/O (Parquet writer + reader) — `t_phase56_parquet_storage`.
+- Analytical queries (DuckDB) — `t_phase56_duckdb_queries`.
+- Provider plugin implementations — `t_phase56_provider_plugins`.
+- Import pipelines / incremental sync / gap detection.
+- Dataset versioning lineage tracking (uses `version_dir()` but
+  the lineage catalog fields land in `t_phase56_data_versioning`).
+
+---
+
 ## Unreleased — Phase 5.6: MarketDataProvider interface
 
 **Date:** 2026-07-03

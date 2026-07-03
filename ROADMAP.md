@@ -1564,7 +1564,8 @@ reversible, read-only:
 
 - `t_phase56_provider_interface` — Protocol + dataclasses + tests. **Done** (`t_1c8a70da`; `strategy/market_data_provider.py`; +65 tests; commit `808ec02`).
 - `t_phase56_local_warehouse` — directory layout, immutability
-  enforcement, `WarehouseIntegrityError`.
+  enforcement, `WarehouseIntegrityError`. **In Review** (`t_b2a75ee8`;
+  `strategy/local_warehouse.py`; +65 tests; commit pending).
 - `t_phase56_catalog` — extension of `strategy/data_catalog.py`.
 - `t_phase56_parquet_storage` — bar writer/reader in canonical
   schema, Zstd config.
