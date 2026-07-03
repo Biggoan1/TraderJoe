@@ -4,6 +4,123 @@ Trader Joe release history.
 
 ---
 
+## v0.26.0 — Phase 5: Two-Month Historical Validation
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase5_two_month_validation_run`
+
+### Added
+- `strategy/historical_validation.py` — end-to-end orchestrator
+  that ties the Research Account Client, Data Catalog, Backtest
+  Lab, Relative Strength Challenger, Walk-Forward pipeline, Stats
+  Engine, Learning Report generator, Research Analyst, and
+  Promotion Gate evidence pipeline into a single
+  `run_historical_validation(config)` call
+- `HistoricalValidationConfig` frozen dataclass carrying dataset
+  id, symbols, benchmarks, calendar window, in-sample /
+  out-of-sample / step sizing, champion / challenger ids, seed,
+  score-delta threshold, `live_fetch` flag (default `False`), and
+  fixture inputs (`fixture_events`, `fixture_champion_scores`,
+  `fixture_rs_map`); locks `flag_name` to
+  `enable_relative_strength`
+- `HistoricalValidationBundle` result with `dataset_manifest_path`,
+  `ChampionChallengerComparison`, `ResearchReport` bundles for the
+  comparison and walk-forward, `LearningReport`,
+  optional analyst narratives / reports / paths, `PromotionEntry`
+  evidence, warnings, and `live_fetch_used`
+- Live-fetch pathway (opt-in): reads `RESEARCH_ALPACA_*` only via
+  the caller-supplied `research_client` — the module itself
+  never reads credentials from `os.environ`; converts bars to
+  deterministic events and a simple percent-change Champion score
+  map (real Champion scoring integration is a follow-up card)
+- `LiveFetchNotAvailableError` raised when `live_fetch=True` and
+  no `research_client` is supplied — the orchestrator refuses to
+  silently fall through to fixture mode
+- Fixture mode is the default: writes a lightweight DataCatalog
+  manifest under `<research_data_root>/manifests/<dataset_id>.json`
+  and persists a JSON events snapshot per dataset
+- Champion is a deterministic `_FixtureChampion` (score lookup by
+  timestamp); Challenger is `RelativeStrengthChallenger` wrapping
+  it with a locally-scoped
+  `FeatureFlags(enable_relative_strength=True)` so the global
+  `FeatureFlags` singleton stays disabled
+
+### Promotion evidence — read-only
+- `PromotionEntry` targets `enable_relative_strength` at
+  `STATE_DISABLED` with evidence keys `dataset_id`,
+  `experiment_manifest`, `backtest_report_id`,
+  `walk_forward_report_id`, `learning_report_id`, and
+  `analyst_report_<i>`
+- Runtime asserts refuse to return a bundle whose entry has
+  advanced past `disabled` or carries any `ApprovalRecord`
+- Source-level scan confirms the module never contains an
+  `ApprovalRecord(` construction
+
+### Tests
+- `tests/test_historical_validation.py` — 41 tests covering:
+  - Config: defaults, flag-name lock to
+    `enable_relative_strength`, champion / challenger id
+    disjointness, every validation error, stable-hash determinism
+    and seed sensitivity
+  - Live-fetch guard: default `False`; `live_fetch=True` without
+    `research_client` raises `LiveFetchNotAvailableError`;
+    passing a `research_client` in fixture mode NEVER calls it
+    (research_client raises AssertionError if invoked;
+    bundle.live_fetch_used is False)
+  - Fixture end-to-end: bundle returned; dataset manifest
+    written; comparison / walk-forward / learning reports each
+    produce `.md` + `.json` files; findings list is populated
+  - Promotion safety: entry stays `STATE_DISABLED`; no approvals;
+    evidence carries dataset_id + backtest_report_id +
+    walk_forward_report_id + learning_report_id; entry targets
+    `enable_relative_strength`
+  - Analyst integration: skipped when no `llm_client`; when a
+    client is supplied, three narratives + three reports written
+    (one each for comparison, walk-forward, learning); analyst
+    report ids appear on the PromotionEntry evidence
+  - Live-fetch pathway (mocked): `research_client.fetch_bars` is
+    called exactly once with the configured window and requests
+    symbols + benchmarks together; live_fetch_used is True
+  - Determinism: two independent config instances produce
+    byte-identical `report.md`, `report.json`, and `manifest.json`
+    for every report type
+  - Safety: `strategy/config.py` bytes byte-identical before and
+    after a run; global `FeatureFlags` remains `all_disabled`;
+    `HistoricalValidationBundle.to_dict()` is JSON-serializable;
+    orchestrator never constructs `ApprovalRecord`
+  - Source safety: no `submit_order` / `place_order` /
+    `cancel_order` / `TradingClient` / `yfinance` references; no
+    `from trader import` / `import trader` /
+    `from crypto_trader` / `import crypto_trader` /
+    `from trader_cli` / `import trader_cli` /
+    `from telegram_approvals` / `import telegram_approvals` /
+    `from strategy.runner` / `import strategy.runner`; no
+    `os.environ[\"ALPACA_...` / `os.getenv(\"ALPACA_...` /
+    `RESEARCH_ALPACA_API_KEY` / `RESEARCH_ALPACA_SECRET_KEY`
+    literal env reads; terminology audit passes; import-time
+    exclusion of order-path modules; `ApprovalRecord(`
+    construction absent from source
+- 1198 passing total (0 failures)
+
+### Notes
+- No live trading impact.  Runner, scheduler, Telegram, CLI, and
+  plugin behavior unchanged.
+- No feature flags enabled globally; the challenger's
+  `enable_relative_strength` flag lives on a locally-scoped
+  `FeatureFlags` instance passed to the challenger constructor
+- No credentials read from `os.environ` inside the module — the
+  caller supplies the research_client, which was independently
+  validated to read `RESEARCH_ALPACA_*` only
+- Historical validation paper account remains isolated per the
+  Phase 5 rules; the orchestrator refuses to silently upgrade to
+  live mode
+- **Phase 5 backlog is now empty pending Hermes validation of
+  this card**
+
+---
+
 ## v0.25.0 — Phase 5: Local LLM Research Assistant
 
 **Date:** 2026-07-03

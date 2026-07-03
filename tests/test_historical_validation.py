@@ -1,0 +1,637 @@
+"""Tests for strategy/historical_validation.py."""
+
+from __future__ import annotations
+
+import json
+from datetime import date, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Mapping, Sequence
+
+import pytest
+
+from strategy.backtest_lab import BacktestEvent
+from strategy.config import reset_feature_flags
+from strategy.historical_validation import (
+    CHAMPION_STRATEGY_ID,
+    DEFAULT_FLAG_NAME,
+    HistoricalValidationBundle,
+    HistoricalValidationConfig,
+    HistoricalValidationError,
+    LiveFetchNotAvailableError,
+    run_historical_validation,
+)
+from strategy.promotion_gates import (
+    PromotionEntry,
+    STATE_DISABLED,
+)
+from strategy.rs_challenger import RS_CHALLENGER_STRATEGY_ID
+
+
+# ---------------------------------------------------------------------------
+# Fixture helpers
+# ---------------------------------------------------------------------------
+
+
+FIXTURE_WINDOW_START = "2026-05-01"
+FIXTURE_WINDOW_END = "2026-06-30"
+FIXTURE_SYMBOLS = ("AAPL", "MSFT", "NVDA")
+
+
+def _iter_dates(start: str, end: str):
+    current = date.fromisoformat(start)
+    stop = date.fromisoformat(end)
+    while current <= stop:
+        yield current
+        current = current + timedelta(days=1)
+
+
+def _make_fixture_events(
+    start: str = FIXTURE_WINDOW_START, end: str = FIXTURE_WINDOW_END
+) -> List[BacktestEvent]:
+    events: List[BacktestEvent] = []
+    for index, day in enumerate(_iter_dates(start, end)):
+        events.append(
+            BacktestEvent(
+                timestamp=f"{day.isoformat()}T14:30:00+00:00",
+                event_type="market_snapshot",
+                sequence=index + 1,
+            )
+        )
+    return events
+
+
+def _make_fixture_scores(
+    events: Sequence[BacktestEvent],
+    symbols: Sequence[str] = FIXTURE_SYMBOLS,
+) -> Dict[str, Dict[str, float]]:
+    scores: Dict[str, Dict[str, float]] = {}
+    for i, event in enumerate(events):
+        scores[event.timestamp] = {
+            symbol: 0.5 + 0.001 * i + 0.01 * j
+            for j, symbol in enumerate(symbols)
+        }
+    return scores
+
+
+def _make_fixture_rs(
+    events: Sequence[BacktestEvent],
+    symbols: Sequence[str] = FIXTURE_SYMBOLS,
+) -> Dict[str, Dict[str, float]]:
+    """Deterministic RS map that lifts NVDA on odd days and AAPL on even days."""
+    rs: Dict[str, Dict[str, float]] = {}
+    for i, event in enumerate(events):
+        rs[event.timestamp] = {
+            "AAPL": 70.0 if i % 2 == 0 else 40.0,
+            "MSFT": 55.0,
+            "NVDA": 70.0 if i % 2 == 1 else 45.0,
+        }
+    return rs
+
+
+def _make_config(tmp_path, **overrides) -> HistoricalValidationConfig:
+    events = _make_fixture_events()
+    base = dict(
+        dataset_id="paper-2026-may-jun",
+        symbols=FIXTURE_SYMBOLS,
+        window_start=FIXTURE_WINDOW_START,
+        window_end=FIXTURE_WINDOW_END,
+        research_data_root=str(tmp_path / "research_data"),
+        report_root=str(tmp_path / "reports"),
+        in_sample_days=30,
+        out_of_sample_days=15,
+        step_days=15,
+        fixture_events=tuple(events),
+        fixture_champion_scores=_make_fixture_scores(events),
+        fixture_rs_map=_make_fixture_rs(events),
+    )
+    base.update(overrides)
+    return HistoricalValidationConfig(**base)
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+
+class TestConfig:
+    def test_defaults(self, tmp_path):
+        config = _make_config(tmp_path)
+        assert config.live_fetch is False
+        assert config.flag_name == DEFAULT_FLAG_NAME
+        assert config.champion_id == CHAMPION_STRATEGY_ID
+        assert config.challenger_id == RS_CHALLENGER_STRATEGY_ID
+
+    def test_flag_name_locked_to_relative_strength(self, tmp_path):
+        with pytest.raises(ValueError, match=DEFAULT_FLAG_NAME):
+            _make_config(tmp_path, flag_name="enable_market_regime")
+
+    def test_champion_and_challenger_must_differ(self, tmp_path):
+        with pytest.raises(ValueError, match="must differ"):
+            _make_config(
+                tmp_path,
+                champion_id="same-id",
+                challenger_id="same-id",
+            )
+
+    @pytest.mark.parametrize(
+        "overrides,error",
+        [
+            ({"dataset_id": ""}, "dataset_id"),
+            ({"symbols": ()}, "symbols"),
+            ({"window_start": ""}, "window_start"),
+            ({"window_end": ""}, "window_end"),
+            (
+                {"window_start": "2026-08-01", "window_end": "2026-07-01"},
+                "window_start",
+            ),
+            ({"in_sample_days": 0}, "in_sample_days"),
+            ({"out_of_sample_days": 0}, "out_of_sample_days"),
+            ({"step_days": 0}, "step_days"),
+        ],
+    )
+    def test_validation_errors(self, tmp_path, overrides, error):
+        with pytest.raises(ValueError, match=error):
+            _make_config(tmp_path, **overrides)
+
+    def test_stable_hash_deterministic(self, tmp_path):
+        first = _make_config(tmp_path)
+        second = _make_config(tmp_path)
+        assert first.stable_hash() == second.stable_hash()
+
+    def test_stable_hash_changes_with_seed(self, tmp_path):
+        assert (
+            _make_config(tmp_path, seed=1).stable_hash()
+            != _make_config(tmp_path, seed=2).stable_hash()
+        )
+
+
+# ---------------------------------------------------------------------------
+# Live fetch guard
+# ---------------------------------------------------------------------------
+
+
+class TestLiveFetchGuard:
+    def test_live_fetch_defaults_to_false(self, tmp_path):
+        config = _make_config(tmp_path)
+        assert config.live_fetch is False
+
+    def test_live_fetch_without_client_raises(self, tmp_path):
+        config = _make_config(tmp_path, live_fetch=True)
+        with pytest.raises(LiveFetchNotAvailableError):
+            run_historical_validation(config)
+
+    def test_fixture_mode_does_not_call_research_client(self, tmp_path):
+        """A research_client passed with live_fetch=False must NOT be
+        called — the orchestrator must not silently upgrade to live
+        mode.
+        """
+
+        class FailIfCalled:
+            def fetch_bars(self, **kwargs):
+                raise AssertionError(
+                    "research_client called in fixture mode"
+                )
+
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config,
+            research_client=FailIfCalled(),
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        assert bundle.live_fetch_used is False
+
+
+# ---------------------------------------------------------------------------
+# End-to-end fixture run
+# ---------------------------------------------------------------------------
+
+
+class TestFixtureRun:
+    def test_run_produces_bundle(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        assert isinstance(bundle, HistoricalValidationBundle)
+        assert bundle.live_fetch_used is False
+        assert bundle.config is config
+
+    def test_run_writes_dataset_manifest(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        manifest_path = Path(bundle.dataset_manifest_path)
+        assert manifest_path.is_file()
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert payload["dataset_id"] == config.dataset_id
+
+    def test_run_writes_comparison_report(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        paths = bundle.comparison_report_paths
+        assert Path(paths.markdown_path).is_file()
+        assert Path(paths.json_path).is_file()
+
+    def test_run_writes_walk_forward_report(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        paths = bundle.walk_forward_report_paths
+        assert Path(paths.markdown_path).is_file()
+        assert Path(paths.json_path).is_file()
+
+    def test_run_writes_learning_report(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        paths = bundle.learning_report_paths
+        assert Path(paths.markdown_path).is_file()
+        assert Path(paths.json_path).is_file()
+
+    def test_run_generates_findings(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        assert len(bundle.findings) >= 6  # 4 from comparison + 2 from WF
+
+
+# ---------------------------------------------------------------------------
+# PromotionEntry / ApprovalRecord guarantees
+# ---------------------------------------------------------------------------
+
+
+class TestPromotionSafety:
+    def test_promotion_entry_stays_disabled(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        assert bundle.promotion_entry.current_state == STATE_DISABLED
+
+    def test_promotion_entry_carries_no_approvals(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        assert bundle.promotion_entry.approvals == []
+
+    def test_promotion_entry_carries_evidence_ids(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        evidence = bundle.promotion_entry.evidence
+        assert evidence["dataset_id"] == config.dataset_id
+        assert (
+            evidence["backtest_report_id"]
+            == bundle.comparison.metadata.run_id
+        )
+        assert (
+            evidence["walk_forward_report_id"]
+            == bundle.walk_forward_report.report_id
+        )
+        assert (
+            evidence["learning_report_id"]
+            == bundle.learning_report.report_id
+        )
+
+    def test_promotion_entry_targets_enable_relative_strength(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        assert bundle.promotion_entry.flag_name == "enable_relative_strength"
+
+
+# ---------------------------------------------------------------------------
+# Analyst wiring
+# ---------------------------------------------------------------------------
+
+
+class _StubLLMClient:
+    def __init__(self, response="## Executive Summary\nrecap"):
+        self._response = response
+        self.calls: List[Dict[str, Any]] = []
+
+    def effective_model(self, explicit=None):
+        return explicit or "local-model"
+
+    def chat(self, prompt, system_prompt, model=None):
+        self.calls.append(
+            {"prompt": prompt, "system_prompt": system_prompt, "model": model}
+        )
+        return self._response
+
+
+class TestAnalystIntegration:
+    def test_analyst_skipped_when_no_client(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        assert bundle.analyst_narratives == []
+        assert bundle.analyst_reports == []
+        assert bundle.analyst_report_paths == []
+
+    def test_analyst_runs_when_client_supplied(self, tmp_path):
+        client = _StubLLMClient()
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config,
+            llm_client=client,
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        # One narrative for comparison, walk-forward, and learning
+        # report each.
+        assert len(bundle.analyst_narratives) == 3
+        assert len(bundle.analyst_reports) == 3
+        assert len(bundle.analyst_report_paths) == 3
+        for paths in bundle.analyst_report_paths:
+            assert Path(paths.markdown_path).is_file()
+        # Analyst-report ids also appear on the PromotionEntry evidence
+        # dict for downstream review.
+        for index, report in enumerate(bundle.analyst_reports):
+            assert (
+                bundle.promotion_entry.evidence[f"analyst_report_{index}"]
+                == report.report_id
+            )
+
+
+# ---------------------------------------------------------------------------
+# Live fetch pathway (mocked)
+# ---------------------------------------------------------------------------
+
+
+class _StubResearchClient:
+    def __init__(self, bars: Dict[str, Any]):
+        self._bars = bars
+        self.calls: List[Dict[str, Any]] = []
+
+    def fetch_bars(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"bars": self._bars}
+
+
+class TestLiveFetchPathway:
+    def _client(self):
+        bars = {
+            symbol: [
+                {
+                    "t": f"2026-05-{day:02d}T14:30:00+00:00",
+                    "c": 100.0 + i * (day % 5),
+                }
+                for day in range(1, 32)
+            ]
+            for i, symbol in enumerate(FIXTURE_SYMBOLS)
+        }
+        # Add benchmark bars so the fetch loop covers them too.
+        for symbol in ("SPY", "QQQ"):
+            bars[symbol] = [
+                {
+                    "t": f"2026-05-{day:02d}T14:30:00+00:00",
+                    "c": 400.0 + day,
+                }
+                for day in range(1, 32)
+            ]
+        return _StubResearchClient(bars)
+
+    def test_live_fetch_calls_client(self, tmp_path):
+        client = self._client()
+        config = _make_config(
+            tmp_path,
+            live_fetch=True,
+            fixture_events=(),
+            fixture_champion_scores={},
+            fixture_rs_map={},
+        )
+        bundle = run_historical_validation(
+            config,
+            research_client=client,
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        assert bundle.live_fetch_used is True
+        assert len(client.calls) == 1
+        assert (
+            client.calls[0]["start"] == FIXTURE_WINDOW_START
+        )
+        assert (
+            client.calls[0]["end"] == FIXTURE_WINDOW_END
+        )
+        # Symbols + benchmarks were requested together
+        requested_symbols = set(client.calls[0]["symbols"])
+        for symbol in FIXTURE_SYMBOLS:
+            assert symbol in requested_symbols
+        for symbol in ("SPY", "QQQ"):
+            assert symbol in requested_symbols
+
+
+# ---------------------------------------------------------------------------
+# Determinism (byte-identical reruns)
+# ---------------------------------------------------------------------------
+
+
+class TestDeterministicReruns:
+    def test_byte_identical_files_on_rerun(self, tmp_path):
+        config_a = _make_config(tmp_path / "run_a")
+        config_b = _make_config(tmp_path / "run_b")
+        bundle_a = run_historical_validation(
+            config_a, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        bundle_b = run_historical_validation(
+            config_b, generated_at="2026-07-03T12:00:00+00:00"
+        )
+
+        # Comparison
+        assert bundle_a.comparison.stable_hash() == bundle_b.comparison.stable_hash()
+        # Walk-forward
+        assert (
+            bundle_a.walk_forward_report.stable_hash()
+            == bundle_b.walk_forward_report.stable_hash()
+        )
+        # Learning
+        assert (
+            bundle_a.learning_report.stable_hash()
+            == bundle_b.learning_report.stable_hash()
+        )
+        # Comparison report files
+        for attr in ("markdown_path", "json_path", "manifest_path"):
+            a_bytes = Path(
+                getattr(bundle_a.comparison_report_paths, attr)
+            ).read_bytes()
+            b_bytes = Path(
+                getattr(bundle_b.comparison_report_paths, attr)
+            ).read_bytes()
+            assert a_bytes == b_bytes, f"comparison {attr} differs"
+        # Walk-forward report files
+        for attr in ("markdown_path", "json_path", "manifest_path"):
+            a_bytes = Path(
+                getattr(bundle_a.walk_forward_report_paths, attr)
+            ).read_bytes()
+            b_bytes = Path(
+                getattr(bundle_b.walk_forward_report_paths, attr)
+            ).read_bytes()
+            assert a_bytes == b_bytes, f"walk-forward {attr} differs"
+        # Learning report files
+        for attr in ("markdown_path", "json_path", "manifest_path"):
+            a_bytes = Path(
+                getattr(bundle_a.learning_report_paths, attr)
+            ).read_bytes()
+            b_bytes = Path(
+                getattr(bundle_b.learning_report_paths, attr)
+            ).read_bytes()
+            assert a_bytes == b_bytes, f"learning {attr} differs"
+
+    def test_config_stable_hash_survives_rerun(self, tmp_path):
+        first = _make_config(tmp_path)
+        second = _make_config(tmp_path)
+        assert first.stable_hash() == second.stable_hash()
+
+
+# ---------------------------------------------------------------------------
+# Safety: config immutability + flag isolation
+# ---------------------------------------------------------------------------
+
+
+class TestSafety:
+    def test_strategy_config_py_bytes_unchanged(self, tmp_path):
+        config_path = Path("strategy/config.py")
+        before = config_path.read_bytes()
+        config = _make_config(tmp_path)
+        run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        after = config_path.read_bytes()
+        assert before == after
+
+    def test_global_feature_flags_remain_disabled(self, tmp_path):
+        flags = reset_feature_flags()
+        config = _make_config(tmp_path)
+        run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        assert flags.all_disabled is True
+        assert flags.enabled_flags == []
+
+    def test_bundle_to_dict_json_serializable(self, tmp_path):
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config, generated_at="2026-07-03T12:00:00+00:00"
+        )
+        json.dumps(bundle.to_dict())
+
+    def test_orchestrator_never_constructs_approval_record(self, tmp_path):
+        """Runtime scan: no ApprovalRecord object exists on the
+        returned bundle or in the promotion entry.
+        """
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config,
+            llm_client=_StubLLMClient(),
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        assert bundle.promotion_entry.approvals == []
+        # Confirm PromotionEntry has zero approvals and that the
+        # bundle carries no other field that would smuggle an approval.
+        payload = bundle.to_dict()
+        assert payload["promotion_entry"]["approvals"] == []
+
+
+# ---------------------------------------------------------------------------
+# Source-safety
+# ---------------------------------------------------------------------------
+
+
+class TestSourceSafety:
+    def _source(self) -> str:
+        import strategy.historical_validation as module
+
+        return Path(module.__file__).read_text(encoding="utf-8")
+
+    def test_no_order_path_references(self):
+        source = self._source()
+        for token in [
+            "submit_order",
+            "place_order",
+            "cancel_order",
+            "TradingClient",
+            "yfinance",
+        ]:
+            assert token not in source, (
+                f"historical_validation must not reference {token!r}"
+            )
+
+    def test_no_live_runner_imports(self):
+        source = self._source()
+        for token in [
+            "from trader import",
+            "import trader\n",
+            "from crypto_trader import",
+            "import crypto_trader",
+            "from trader_cli import",
+            "import trader_cli",
+            "from telegram_approvals import",
+            "import telegram_approvals",
+            "from strategy.runner import",
+            "import strategy.runner",
+        ]:
+            assert token not in source, (
+                f"historical_validation must not import {token!r}"
+            )
+
+    def test_no_credential_env_reads(self):
+        import re
+
+        source = self._source()
+        for pattern in (
+            r"os\.environ\[\s*['\"]ALPACA_",
+            r"os\.environ\.get\(\s*['\"]ALPACA_",
+            r"os\.getenv\(\s*['\"]ALPACA_",
+            r"['\"]RESEARCH_ALPACA_API_KEY['\"]",
+            r"['\"]RESEARCH_ALPACA_SECRET_KEY['\"]",
+        ):
+            assert not re.search(pattern, source), (
+                f"historical_validation must not read credentials directly "
+                f"(pattern={pattern!r})"
+            )
+
+    def test_terminology_avoids_training(self):
+        source = self._source()
+        assert 'call this "training"' in source
+        stripped = source.replace(
+            'It does not call this "training" — Phase 5 evaluation work is',
+            "",
+        )
+        for token in ["training", "Training", "TRAINING"]:
+            assert token not in stripped
+
+    def test_import_does_not_pull_in_order_path(self):
+        import sys
+
+        for name in ["strategy.historical_validation", "strategy"]:
+            sys.modules.pop(name, None)
+        before = set(sys.modules)
+        import strategy.historical_validation  # noqa: F401
+
+        added = set(sys.modules) - before
+        forbidden = {
+            "trader_cli",
+            "trader",
+            "crypto_trader",
+            "telegram_approvals",
+        }
+        assert not (added & forbidden)
+
+    def test_never_constructs_approvalrecord_in_source(self):
+        source = self._source()
+        # The literal `ApprovalRecord(` (constructor call) must not
+        # appear anywhere in the module.  Comments referring to
+        # ApprovalRecord as a concept are fine.
+        assert "ApprovalRecord(" not in source, (
+            "historical_validation must not construct ApprovalRecord"
+        )

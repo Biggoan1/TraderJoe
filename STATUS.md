@@ -6,7 +6,7 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 5 Two-Month Historical Validation (`t_phase5_two_month_validation_run`, Ready)
+- Current: Phase 5 Two-Month Historical Validation (`t_phase5_two_month_validation_run`, Review)
 - Last completed: Phase 5 Local LLM Research Assistant (`t_phase5_local_llm_research_assistant`)
 - Workflow: Kanban (see KANBAN.md)
 
@@ -17,7 +17,7 @@
 - Status: Research Alpaca client validated + env isolation + launchers + model config; Local LLM Research Assistant ready
 
 ## Testing
-- Tests passing: 1157
+- Tests passing: 1198
 - Tests failing: 0
 - Last run: 2026-07-03
 
@@ -42,5 +42,5 @@
 - Phase 2: complete (6/6 complete)
 - Phase 3: complete (7/7 complete)
 - Phase 4: complete (7/7 complete)
-- Phase 5: 1 planning + 2 implementation cards Done; 1 Ready
+- Phase 5: 1 planning + 2 implementation cards Done; 1 in Review
 - Phase 5.5 (planned): Research & Learning Dashboard — 1 planning card in Backlog

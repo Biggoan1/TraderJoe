@@ -1228,7 +1228,37 @@ read-only.  Order-path behavior is untouched throughout.
   module.
 
 #### `t_phase5_two_month_validation_run` — Two-Month Historical Validation
-- **Status:** Ready
+- **Status:** Review
+- **Implementation note:** `strategy/historical_validation.py` adds
+  `HistoricalValidationConfig` (frozen dataclass; locks
+  `flag_name` to `enable_relative_strength`), a
+  `run_historical_validation(config, *, research_client=None,
+  llm_client=None, generated_at=None)` orchestrator, and a
+  `HistoricalValidationBundle` result object.  Fixture mode is the
+  default: the config carries `fixture_events`,
+  `fixture_champion_scores`, and `fixture_rs_map`, and the
+  orchestrator drives the ComparisonHarness + WalkForwardPipeline
+  + stats-engine (findings) + LearningReport + optional
+  ResearchAnalyst chain and writes every artifact under
+  `<report_root>/backtests/`, `walk_forward/`, `learning/`, and
+  `analyst/`.  Live-fetch mode requires `live_fetch=True` AND a
+  `research_client`; a passed research_client is NEVER called in
+  fixture mode (tested).  The Champion is a deterministic
+  `_FixtureChampion` (score lookup by timestamp) and the Challenger
+  is `RelativeStrengthChallenger` wrapping it with a locally-scoped
+  `FeatureFlags(enable_relative_strength=True)` — the global
+  singleton stays disabled throughout.  The returned
+  `PromotionEntry` targets `enable_relative_strength` at
+  `STATE_DISABLED` with backtest / walk-forward / learning /
+  analyst report ids in `evidence`; the orchestrator asserts the
+  entry never advances past `disabled` and never carries an
+  `ApprovalRecord`, and the module source is scanned by a test to
+  prove `ApprovalRecord(` construction does not appear anywhere in
+  the source.  Never imports `strategy/config.py` (only reads
+  `FeatureFlags` via a fresh local instance);
+  `strategy/config.py` bytes verified unchanged before and after a
+  run; no order-path references; no credential env reads;
+  terminology audit passes.
 - **Scope:** Add `HistoricalValidationConfig` and
   `run_historical_validation(config)`.  The orchestrator uses the
   Research Account Client to ingest two months of bars for the

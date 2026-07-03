@@ -204,6 +204,17 @@ from strategy.learning_pipeline import (
     LearningPipeline,
     LearningPipelineError,
 )
+from strategy.historical_validation import (
+    CHAMPION_STRATEGY_ID as HISTORICAL_VALIDATION_CHAMPION_ID,
+    DEFAULT_FLAG_NAME as HISTORICAL_VALIDATION_FLAG_NAME,
+    DEFAULT_REPORT_ROOT as HISTORICAL_VALIDATION_REPORT_ROOT,
+    DEFAULT_RESEARCH_DATA_ROOT as HISTORICAL_VALIDATION_DATA_ROOT,
+    HistoricalValidationBundle,
+    HistoricalValidationConfig,
+    HistoricalValidationError,
+    LiveFetchNotAvailableError,
+    run_historical_validation,
+)
 from strategy.research_analyst import (
     ANALYST_REPORT_ID_PREFIX,
     CLOUD_MODEL_TOKENS,
