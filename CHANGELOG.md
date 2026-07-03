@@ -4,6 +4,77 @@ Trader Joe release history.
 
 ---
 
+## v0.13.0 — Phase 3: Champion/Challenger Comparison Harness
+
+**Date:** 2026-07-02
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase3_champion_challenger`
+
+### Added
+- `strategy/comparison_harness.py` — read-only Champion/Challenger comparison
+  harness built on top of the Backtest Lab foundation
+- `ComparisonEvaluator` runtime protocol satisfied by the existing
+  `NoOpStrategyAdapter`
+- `ScoreRow` and `ScoreTable` per-event alignment of Champion and
+  Challenger scores, ranks, selection status, score deltas, and rank
+  deltas
+- `DisagreementRecord` classifying divergences as `ranking_only`,
+  `entry_selection`, `score_delta`, or `data_unavailable`
+- `ChampionChallengerRunMetadata` with a deterministic `run_id` derived
+  from champion/challenger ids, dataset id, event signature, seed, and
+  threshold
+- `ChampionChallengerComparison` container with `to_dict`, `to_json`,
+  `stable_hash` (ignores `generated_at`), and
+  `disagreements_by_kind()`
+- Score-delta threshold controls score-only disagreement sensitivity
+- Rows sorted by symbol; disagreements sorted by
+  `(event_timestamp, event_type, symbol, kind)` for deterministic output
+- `CHAMPION_ROLE` / `CHALLENGER_ROLE` aliases reuse
+  `strategy.config.CHAMPION_NAME` / `CHALLENGER_NAME`
+
+### Changed
+- `strategy/data_catalog.py` — dropped unused `stable_json` import
+  (non-blocking lint noted during validation of `t_phase3_data_catalog`)
+
+### Tests
+- `tests/test_comparison_harness.py` — 27 tests covering:
+  - `ScoreRow`, `ScoreTable`, and `DisagreementRecord` serialization
+  - Rejection of unknown disagreement kinds
+  - Role aliases (`CHAMPION_ROLE`, `CHALLENGER_ROLE`)
+  - `NoOpStrategyAdapter` satisfies `ComparisonEvaluator`
+  - Harness rejects negative thresholds and identical strategy ids
+  - No-op run produces empty tables and no disagreements
+  - Identical evaluations produce no disagreements
+  - Explicit classification tests for `ranking_only`, `entry_selection`,
+    `score_delta`, and `data_unavailable`
+  - Score-delta threshold suppresses under-threshold differences
+  - Disagreements sorted deterministically across multiple events
+  - Score-table rows sorted alphabetically by symbol
+  - Score tables capture event type, sequence, and per-side warnings
+  - Run id derived from inputs; `stable_hash` independent of
+    `generated_at`; run id changes with dataset id
+  - `to_json` produces byte-identical output across runs (excluding
+    `generated_at`)
+  - Full result is JSON-serializable
+  - `disagreements_by_kind()` partitions records across known kinds
+  - Module source has no `alpaca` / `place_order` / `submit_order` /
+    `TradingClient` references
+  - Feature flags remain `all_disabled` after harness runs
+  - Importing the harness module does not pull in `trader_cli`, `trader`,
+    `crypto_trader`, or `telegram_approvals`
+- 500 passing total (0 failures)
+
+### Notes
+- Harness foundation only — no Relative Strength Challenger implementation
+- Runner, scheduler, Telegram, CLI, plugin, and order-path behavior
+  unchanged
+- No feature flags enabled; `strategy/config.py` untouched
+- Relative Strength Challenger (`t_phase3_rs_challenger`) and
+  Walk-Forward Pipeline (`t_phase3_walk_forward`) remain in Backlog
+
+---
+
 ## v0.12.0 — Phase 3: Research Data Catalog
 
 **Date:** 2026-07-02

@@ -1,23 +1,23 @@
 # Trader Joe — Status
 
 ## Version
-- Current: v0.12.0
+- Current: v0.13.0
 - Champion: v0.4.0
 - Challenger: none
 
 ## Sprint
-- Current: Phase 3 Champion/Challenger Comparison Harness (`t_phase3_champion_challenger`, Ready)
+- Current: Phase 3 Champion/Challenger Comparison Harness (`t_phase3_champion_challenger`, Review)
 - Last completed: Phase 3 Research Data Catalog (`t_phase3_data_catalog`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Research Data Catalog validation)
+- Commit: latest HEAD (Comparison harness implementation)
 - Tag: v0.4.0 (Phase 1 baseline)
-- Status: Research Data Catalog validated; Champion/Challenger Comparison Harness ready
+- Status: Champion/Challenger comparison harness implemented; awaiting Hermes validation
 
 ## Testing
-- Tests passing: 473
+- Tests passing: 500
 - Tests failing: 0
 - Last run: 2026-07-02
 

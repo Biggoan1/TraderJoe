@@ -175,7 +175,7 @@ Sprint 7 onward uses Kanban for workflow management. See [KANBAN.md](KANBAN.md).
 | `t_phase3_plan` | Phase 3: Decision Engine Technical Design | Phase 3 | Done |
 | `t_phase3_backtest_lab` | Phase 3: Backtest Lab Foundation | Phase 3 | Done |
 | `t_phase3_data_catalog` | Phase 3: Research Data Catalog | Phase 3 | Done |
-| `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Ready |
+| `t_phase3_champion_challenger` | Phase 3: Champion/Challenger Comparison Harness | Phase 3 | Review |
 | `t_phase3_rs_challenger` | Phase 3: Relative Strength Challenger Overlay | Phase 3 | Backlog |
 | `t_phase3_walk_forward` | Phase 3: Walk-Forward Evaluation Pipeline | Phase 3 | Backlog |
 | `t_phase3_reports` | Phase 3: Research Report Generation | Phase 3 | Backlog |
@@ -410,10 +410,11 @@ approved production rollout.
 - **Validation outcome:** 473 tests passing; catalog confirmed read-only, deterministic, and observational; feature flags remain all disabled; commit `0410aa2`.
 
 #### `t_phase3_champion_challenger` — Champion/Challenger Comparison Harness
-- **Status:** Backlog
+- **Status:** Review
 - **Scope:** Run Champion and Challenger evaluators side-by-side in replay without order placement.
 - **Definition of Done:** Same input stream produces comparable score tables and disagreement records.
 - **Validation:** Tests prove identical inputs, deterministic outputs, and no order-path imports/calls.
+- **Implementation note:** `strategy/comparison_harness.py` implements a read-only `ComparisonHarness` with a `ComparisonEvaluator` protocol satisfied by the existing `NoOpStrategyAdapter`. Per-event `ScoreTable` and `ScoreRow` align Champion and Challenger scores, ranks, selection, score deltas, and rank deltas. `DisagreementRecord` classifies divergences as `ranking_only`, `entry_selection`, `score_delta`, or `data_unavailable`. `ChampionChallengerRunMetadata.run_id` is derived from a deterministic hash of champion/challenger ids, dataset id, event signature, seed, and threshold; `stable_hash` on the full comparison ignores `generated_at`. No Relative Strength Challenger logic, order-path imports, or feature-flag mutation.
 
 #### `t_phase3_rs_challenger` — Relative Strength Challenger Overlay
 - **Status:** Backlog

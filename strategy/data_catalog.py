@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from strategy.backtest_lab import stable_hash, stable_json
+from strategy.backtest_lab import stable_hash
 
 
 DEFAULT_CATALOG_ROOT = "research_data"

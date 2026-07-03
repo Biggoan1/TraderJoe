@@ -76,6 +76,16 @@ from strategy.data_catalog import (
     build_dataset_manifest,
     sha256_file,
 )
+from strategy.comparison_harness import (
+    ChampionChallengerComparison,
+    ChampionChallengerRunMetadata,
+    ComparisonEvaluator,
+    ComparisonHarness,
+    DisagreementRecord,
+    KNOWN_DISAGREEMENT_KINDS,
+    ScoreRow,
+    ScoreTable,
+)
 
 __all__ = [
     "FeatureFlags",
@@ -98,6 +108,14 @@ __all__ = [
     "KNOWN_DATASET_KINDS",
     "build_dataset_manifest",
     "sha256_file",
+    "ChampionChallengerComparison",
+    "ChampionChallengerRunMetadata",
+    "ComparisonEvaluator",
+    "ComparisonHarness",
+    "DisagreementRecord",
+    "KNOWN_DISAGREEMENT_KINDS",
+    "ScoreRow",
+    "ScoreTable",
     "ChampionChallengerRunner",
     "EvaluationResult",
     "MorningIntelligenceAgent",
