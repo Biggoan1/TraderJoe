@@ -251,6 +251,29 @@ class WalkForwardSplitResult:
             "disagreement_counts": dict(self.disagreement_counts),
         }
 
+    def to_analyst_payload(self) -> Dict[str, Any]:
+        """Trimmed variant used by the Research Analyst LLM prompt.
+
+        Mirrors :meth:`to_dict` but forwards
+        :meth:`ChampionChallengerComparison.to_analyst_payload` so the
+        nested split comparison drops structured explanations from
+        score-table rows (they stay on disagreements — the surface the
+        analyst actually cites).
+        """
+        payload_fn = getattr(self.comparison, "to_analyst_payload", None)
+        comparison_payload = (
+            payload_fn() if callable(payload_fn) else self.comparison.to_dict()
+        )
+        return {
+            "split": self.split.to_dict(),
+            "total_events": self.total_events,
+            "in_sample_event_count": self.in_sample_event_count,
+            "out_of_sample_event_count": self.out_of_sample_event_count,
+            "dropped_event_count": self.dropped_event_count,
+            "comparison": comparison_payload,
+            "disagreement_counts": dict(self.disagreement_counts),
+        }
+
 
 @dataclass
 class WalkForwardReport:
@@ -284,6 +307,32 @@ class WalkForwardReport:
             "total_out_of_sample_events": self.total_out_of_sample_events,
             "total_unassigned_events": self.total_unassigned_events,
             "split_results": [result.to_dict() for result in self.split_results],
+            "total_disagreement_counts": dict(self.total_disagreement_counts),
+            "warnings": list(self.warnings),
+            "generated_at": self.generated_at,
+        }
+
+    def to_analyst_payload(self) -> Dict[str, Any]:
+        """Trimmed variant used by the Research Analyst LLM prompt.
+
+        Forwards each split's ``to_analyst_payload`` so nested
+        comparisons carry structured explanations only on
+        disagreements, not on every score-table row.
+        """
+        return {
+            "report_id": self.report_id,
+            "schedule": self.schedule.to_dict(),
+            "champion_id": self.champion_id,
+            "challenger_id": self.challenger_id,
+            "dataset_id": self.dataset_id,
+            "seed": self.seed,
+            "score_delta_threshold": self.score_delta_threshold,
+            "total_events": self.total_events,
+            "total_out_of_sample_events": self.total_out_of_sample_events,
+            "total_unassigned_events": self.total_unassigned_events,
+            "split_results": [
+                result.to_analyst_payload() for result in self.split_results
+            ],
             "total_disagreement_counts": dict(self.total_disagreement_counts),
             "warnings": list(self.warnings),
             "generated_at": self.generated_at,

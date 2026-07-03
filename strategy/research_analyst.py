@@ -1054,11 +1054,17 @@ class ResearchAnalyst:
         explicit_model: Optional[str] = None,
         generated_at: Optional[str] = None,
     ) -> LLMNarrative:
+        # Prefer the trimmed payload (structured explanations only on
+        # disagreements, not on every nested score-table row).
+        payload_fn = getattr(wf_report, "to_analyst_payload", None)
+        source_payload = (
+            payload_fn() if callable(payload_fn) else wf_report.to_dict()
+        )
         return self.analyze(
             source_kind=KIND_WALK_FORWARD,
             source_id=wf_report.report_id,
             source_hash=wf_report.stable_hash(),
-            source_payload=wf_report.to_dict(),
+            source_payload=source_payload,
             explicit_model=explicit_model,
             generated_at=generated_at,
         )
