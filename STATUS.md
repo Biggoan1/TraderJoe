@@ -6,15 +6,15 @@
 - Challenger: rs-challenger-v0.1.0 (disabled by default)
 
 ## Sprint
-- Current: Phase 4 Learning Report Generation (`t_phase4_learning_reports`, Review)
-- Last completed: Phase 4 Strategy Weight Recommender (`t_phase4_weight_recommender`)
+- Current: Phase 4 End-to-End Learning System Validation (`t_phase4_validation`, Ready)
+- Last completed: Phase 4 Learning Report Generation (`t_phase4_learning_reports`)
 - Workflow: Kanban (see KANBAN.md)
 
 ## Repository
 - Branch: sprint-3/daily-digest
-- Commit: latest HEAD (Learning reports implementation)
+- Commit: latest HEAD (Learning reports validation)
 - Tags: v0.4.0 (Phase 1 baseline), v0.10.0-phase2 (Phase 2), v0.17.0-phase3 (Phase 3)
-- Status: Learning reports implemented; awaiting Hermes validation
+- Status: Learning reports validated; End-to-End Learning System Validation ready
 
 ## Testing
 - Tests passing: 893
@@ -41,4 +41,4 @@
 - Phase 1: complete
 - Phase 2: complete (6/6 complete)
 - Phase 3: complete (7/7 complete)
-- Phase 4: 1 planning + 4 implementation cards Done; 1 Ready; 1 in Backlog
+- Phase 4: 1 planning + 5 implementation cards Done; 1 Ready

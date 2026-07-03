@@ -8,8 +8,32 @@ Trader Joe release history.
 
 **Date:** 2026-07-02
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase4_learning_reports`
+**Commit:** `878c50e`, plus validation board update
+
+### Validation
+- 893 tests passing (0 failing)
+- Working tree clean prior to validation commit
+- `stable_hash` and `report_id` independent of `generated_at`
+- Repeat render with the same `generated_at` produces byte-identical
+  `to_json`, `to_markdown`, `recommendations_json`, and
+  `manifest_json`
+- `write` persists all four files
+  (`report.md`, `report.json`, `recommendations.json`, `manifest.json`),
+  is idempotent, and lands under `<output_dir>/<report_id>/`
+- Manifest carries all four source hashes
+  (`findings_hash`, `hypotheses_hash`, `importance_hash`,
+  `recommendations_hash`)
+- No `alpaca`, `yfinance`, `TradingClient`, `api_key`, `place_order`,
+  `submit_order`, or order-path references in
+  `strategy/learning_reports.py`
+- Module never imports `strategy.config`, never reads or mutates
+  `FeatureFlags`
+- Runner, scheduler, Telegram, CLI, and plugin behavior unchanged
+- Historical validation paper account remains documentation-only
+- Card `t_phase4_learning_reports` moved to Done
+- Card `t_phase4_validation` unblocked and moved to Ready
 
 ### Added
 - `strategy/learning_reports.py` — aggregates Phase 4 analysis

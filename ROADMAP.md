@@ -824,7 +824,7 @@ config.
   disabled; commit `a04d46d`.
 
 #### `t_phase4_learning_reports` — Learning Report Generation
-- **Status:** Review
+- **Status:** Done
 - **Scope:** Aggregate `StatisticalFinding`, `PatternHypothesis`,
   `FeatureImportanceScore`, and `WeightRecommendation` records into a
   `LearningReport` bundle. Mirror the Phase 3 `ResearchReport` layout
@@ -848,9 +848,17 @@ config.
   recommendations, optional recommendation envelopes, and a
   reproducibility footer.  Never imports `strategy.config`; never
   references any order-path module.
+- **Validation outcome:** 893 tests passing; `stable_hash` and
+  `report_id` independent of `generated_at`; repeat render
+  byte-identical across `to_json`, `to_markdown`,
+  `recommendations_json`, and `manifest_json`; `write` persists all
+  four files, is idempotent, and lands under
+  `<output_dir>/<report_id>/`; manifest carries all four source
+  hashes; global feature flags remain all disabled; commit
+  `878c50e`.
 
 #### `t_phase4_validation` — End-to-End Learning System Validation
-- **Status:** Backlog (depends on all five implementation cards)
+- **Status:** Ready
 - **Scope:** Wire the Learning System end-to-end against a frozen
   Phase 3 artifact set (test fixtures under `tests/fixtures/`) and
   assert determinism, feature-flag isolation, no order-path imports,
