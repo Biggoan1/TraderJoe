@@ -71,6 +71,35 @@ from strategy.model_config import CONTEXT_RESEARCH, resolve_model
 RESEARCH_LLM_ENDPOINT_ENV = "RESEARCH_LLM_ENDPOINT"
 RESEARCH_LLM_ALLOW_REMOTE_ENV = "RESEARCH_LLM_ALLOW_REMOTE"
 RESEARCH_LLM_ALLOWED_HOSTS_ENV = "RESEARCH_LLM_ALLOWED_HOSTS"
+RESEARCH_LLM_API_STYLE_ENV = "RESEARCH_LLM_API_STYLE"
+
+API_STYLE_OPENAI = "openai"
+API_STYLE_OLLAMA = "ollama"
+KNOWN_API_STYLES: Tuple[str, ...] = (API_STYLE_OPENAI, API_STYLE_OLLAMA)
+DEFAULT_API_STYLE = API_STYLE_OPENAI
+
+
+@dataclass(frozen=True)
+class _ApiStyleConfig:
+    """URL paths and body-shape rules for one provider style."""
+
+    models_path: str
+    chat_path: str
+    temperature_in_options: bool  # ollama nests temperature inside "options"
+
+
+_API_STYLE_CONFIGS: Dict[str, _ApiStyleConfig] = {
+    API_STYLE_OPENAI: _ApiStyleConfig(
+        models_path="/v1/models",
+        chat_path="/v1/chat/completions",
+        temperature_in_options=False,
+    ),
+    API_STYLE_OLLAMA: _ApiStyleConfig(
+        models_path="/api/tags",
+        chat_path="/api/chat",
+        temperature_in_options=True,
+    ),
+}
 
 DEFAULT_LOCAL_ENDPOINT = "http://127.0.0.1:8080"
 LOOPBACK_HOSTS: Tuple[str, ...] = ("127.0.0.1", "localhost", "::1")
@@ -437,6 +466,28 @@ def _parse_allowed_hosts(env: Mapping[str, str]) -> Tuple[str, ...]:
     return tuple(part.strip() for part in raw.split(",") if part.strip())
 
 
+def _resolve_api_style(
+    explicit: Optional[str],
+    env: Mapping[str, str],
+) -> str:
+    """Resolve the LLM api style from an explicit kwarg or env var.
+
+    Never auto-detects — an unknown value raises immediately.  The
+    default is :data:`DEFAULT_API_STYLE` (``openai``).
+    """
+    if explicit is not None:
+        candidate = explicit.strip().lower()
+    else:
+        raw = env.get(RESEARCH_LLM_API_STYLE_ENV, "").strip().lower()
+        candidate = raw or DEFAULT_API_STYLE
+    if candidate not in KNOWN_API_STYLES:
+        raise LocalLLMConfigError(
+            f"unknown RESEARCH_LLM_API_STYLE {candidate!r}; "
+            f"expected one of {KNOWN_API_STYLES}"
+        )
+    return candidate
+
+
 def _assert_local_model(model: str) -> None:
     if not model:
         raise LocalLLMConfigError("model is required")
@@ -491,13 +542,13 @@ def _detect_forbidden_output(text: str) -> List[str]:
 HttpPostCallable = Callable[[str, Dict[str, Any], float], bytes]
 HttpGetCallable = Callable[[str, float], bytes]
 
-# Endpoint paths tried in order for model enumeration.  The client
-# tries them until one succeeds; a 404 / connection error triggers
-# the next candidate.
+# Legacy constant preserved for import compatibility.  The client no
+# longer tries paths in order — provider selection determines the
+# single path used.  See RESEARCH_LLM_API_STYLE and
+# _API_STYLE_CONFIGS.
 MODEL_LISTING_PATHS: Tuple[str, ...] = (
-    "/v1/models",   # OpenAI-compat (llama.cpp, llama-swap, LM Studio,
-                    # Hermes Gateway)
-    "/api/tags",    # Ollama
+    _API_STYLE_CONFIGS[API_STYLE_OPENAI].models_path,
+    _API_STYLE_CONFIGS[API_STYLE_OLLAMA].models_path,
 )
 
 
@@ -547,6 +598,7 @@ class LocalLLMClient:
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         allow_remote: Optional[bool] = None,
         allowed_hosts: Optional[Sequence[str]] = None,
+        api_style: Optional[str] = None,
     ):
         source = env if env is not None else os.environ
         resolved_endpoint = endpoint or source.get(
@@ -562,6 +614,7 @@ class LocalLLMClient:
             if allowed_hosts is not None
             else _parse_allowed_hosts(source)
         )
+        resolved_api_style = _resolve_api_style(api_style, source)
         _assert_endpoint_allowed(
             resolved_endpoint,
             allow_remote=resolved_allow_remote,
@@ -579,6 +632,8 @@ class LocalLLMClient:
         self._endpoint = resolved_endpoint.rstrip("/")
         self._allow_remote = bool(resolved_allow_remote)
         self._allowed_hosts = resolved_allowed_hosts
+        self._api_style = resolved_api_style
+        self._api_config = _API_STYLE_CONFIGS[resolved_api_style]
         self._default_model = model
         self._temperature = float(temperature)
         self._http_post: HttpPostCallable = (
@@ -601,6 +656,10 @@ class LocalLLMClient:
     @property
     def allowed_hosts(self) -> Tuple[str, ...]:
         return self._allowed_hosts
+
+    @property
+    def api_style(self) -> str:
+        return self._api_style
 
     @property
     def default_model(self) -> Optional[str]:
@@ -638,16 +697,19 @@ class LocalLLMClient:
         model: Optional[str] = None,
     ) -> str:
         chosen_model = self.effective_model(explicit=model)
-        body = {
+        body: Dict[str, Any] = {
             "model": chosen_model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
-            "options": {"temperature": self._temperature},
             "stream": False,
         }
-        url = f"{self._endpoint}/api/chat"
+        if self._api_config.temperature_in_options:
+            body["options"] = {"temperature": self._temperature}
+        else:
+            body["temperature"] = self._temperature
+        url = f"{self._endpoint}{self._api_config.chat_path}"
         try:
             payload_bytes = self._http_post(url, body, self._timeout)
         except Exception as exc:  # noqa: BLE001
@@ -670,36 +732,38 @@ class LocalLLMClient:
     def list_models(self) -> List[str]:
         """Enumerate models available on the configured local endpoint.
 
-        Tries the OpenAI-compatible ``/v1/models`` endpoint first,
-        then Ollama's ``/api/tags`` as a fallback.  Returns a
-        deterministic sorted list.  Returns an empty list if the
-        endpoint responds but exposes no ``data`` / ``models`` array
-        (treated as "capability unavailable" by callers).
+        Uses the provider-selected listing path only —
+        ``/v1/models`` for ``api_style=openai`` (default),
+        ``/api/tags`` for ``api_style=ollama``.  There is no
+        fallback between paths: the endpoint policy already assumes
+        the operator picked the correct provider via
+        :data:`RESEARCH_LLM_API_STYLE_ENV`.
 
-        Raises :class:`ModelDiscoveryError` only when every candidate
-        path fails at the transport or decoding layer.  The endpoint
-        guard already ensured we are calling a loopback host — this
-        method never queries a cloud provider.
+        Returns a deterministic sorted list.  Returns an empty list
+        if the endpoint responds with no ``data`` / ``models`` array.
+        Raises :class:`ModelDiscoveryError` on transport or decoding
+        failure.  The endpoint guard already ensured we are calling
+        a loopback or allow-listed host — this method never queries
+        a cloud provider.
         """
-        errors: List[str] = []
-        for path in MODEL_LISTING_PATHS:
-            url = f"{self._endpoint}{path}"
-            try:
-                body = self._http_get(url, self._timeout)
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"{path}: {exc}")
-                continue
-            try:
-                payload = json.loads(body)
-            except json.JSONDecodeError as exc:
-                errors.append(f"{path}: non-JSON response: {exc}")
-                continue
-            names = self._extract_model_names(payload)
-            return sorted(set(names))
-        raise ModelDiscoveryError(
-            f"could not enumerate models on {self._endpoint}; "
-            f"tried {list(MODEL_LISTING_PATHS)}; errors: {errors}"
-        )
+        path = self._api_config.models_path
+        url = f"{self._endpoint}{path}"
+        try:
+            body = self._http_get(url, self._timeout)
+        except Exception as exc:  # noqa: BLE001
+            raise ModelDiscoveryError(
+                f"could not enumerate models on {self._endpoint} "
+                f"(api_style={self._api_style!r}, path={path!r}): {exc}"
+            ) from exc
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise ModelDiscoveryError(
+                f"non-JSON models response from {self._endpoint} "
+                f"(api_style={self._api_style!r}, path={path!r}): {exc}"
+            ) from exc
+        names = self._extract_model_names(payload)
+        return sorted(set(names))
 
     @staticmethod
     def _extract_model_names(payload: Any) -> List[str]:

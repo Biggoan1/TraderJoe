@@ -16,10 +16,14 @@ from strategy.research_analyst import (
     ANALYST_REPORT_FILENAME_MARKDOWN,
     ANALYST_REPORT_FILENAME_NARRATIVE,
     ANALYST_REPORT_ID_PREFIX,
+    API_STYLE_OLLAMA,
+    API_STYLE_OPENAI,
     CLOUD_HOST_TOKENS,
     CLOUD_MODEL_TOKENS,
     DEFAULT_ANALYST_OUTPUT_DIR,
+    DEFAULT_API_STYLE,
     DEFAULT_LOCAL_ENDPOINT,
+    KNOWN_API_STYLES,
     FORBIDDEN_OUTPUT_HEADINGS,
     FORBIDDEN_OUTPUT_PATTERNS,
     KIND_COMPARISON,
@@ -41,6 +45,7 @@ from strategy.research_analyst import (
     REQUIRED_TEMPERATURE,
     RESEARCH_LLM_ALLOW_REMOTE_ENV,
     RESEARCH_LLM_ALLOWED_HOSTS_ENV,
+    RESEARCH_LLM_API_STYLE_ENV,
     RESEARCH_LLM_ENDPOINT_ENV,
     ResearchAnalyst,
     ResearchAnalystReport,
@@ -540,6 +545,193 @@ class TestModelDiscoveryOverLAN:
         assert exc.closest == "llama3.1"
 
 
+class TestApiStyleProviderSelection:
+    """Explicit selection between OpenAI-compat and Ollama endpoints.
+
+    No auto-detection — the provider is chosen only from the explicit
+    env var or kwarg.  Default is OpenAI (llama.cpp / llama-swap /
+    LM Studio / Hermes Gateway).
+    """
+
+    def _post_returning(self, response):
+        calls = []
+
+        def post(url, body, timeout):
+            calls.append({"url": url, "body": body, "timeout": timeout})
+            return json.dumps(response).encode("utf-8")
+
+        return post, calls
+
+    def _get_returning(self, response):
+        calls = []
+
+        def get(url, timeout):
+            calls.append(url)
+            return json.dumps(response).encode("utf-8")
+
+        return get, calls
+
+    # ----- default provider -----
+
+    def test_default_provider_is_openai(self):
+        assert DEFAULT_API_STYLE == API_STYLE_OPENAI
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:8080",
+            model="m",
+            http_post=lambda u, b, t: b"{}",
+            env={},
+        )
+        assert client.api_style == API_STYLE_OPENAI
+
+    # ----- env var selection -----
+
+    def test_env_var_can_select_ollama(self):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://127.0.0.1:11434",
+            RESEARCH_LLM_API_STYLE_ENV: "ollama",
+        }
+        client = LocalLLMClient(
+            model="m",
+            env=env,
+            http_post=lambda u, b, t: b"{}",
+        )
+        assert client.api_style == API_STYLE_OLLAMA
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("openai", API_STYLE_OPENAI),
+            ("OpenAI", API_STYLE_OPENAI),
+            ("OLLAMA", API_STYLE_OLLAMA),
+            ("  ollama  ", API_STYLE_OLLAMA),
+        ],
+    )
+    def test_env_var_is_case_insensitive_and_stripped(self, value, expected):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://127.0.0.1:8080",
+            RESEARCH_LLM_API_STYLE_ENV: value,
+        }
+        client = LocalLLMClient(
+            model="m",
+            env=env,
+            http_post=lambda u, b, t: b"{}",
+        )
+        assert client.api_style == expected
+
+    def test_env_var_empty_falls_back_to_default(self):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://127.0.0.1:8080",
+            RESEARCH_LLM_API_STYLE_ENV: "",
+        }
+        client = LocalLLMClient(
+            model="m", env=env, http_post=lambda u, b, t: b"{}"
+        )
+        assert client.api_style == DEFAULT_API_STYLE
+
+    @pytest.mark.parametrize(
+        "value",
+        ["auto", "openai-compat", "azure", "openrouter", "vllm", "gemini"],
+    )
+    def test_invalid_provider_rejected(self, value):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://127.0.0.1:8080",
+            RESEARCH_LLM_API_STYLE_ENV: value,
+        }
+        with pytest.raises(LocalLLMConfigError, match="RESEARCH_LLM_API_STYLE"):
+            LocalLLMClient(model="m", env=env)
+
+    def test_no_automatic_detection_of_provider(self):
+        """Even if the endpoint contains 'openai' or 'ollama' in a
+        path suffix, provider selection is driven solely by the env
+        var / kwarg.  The client never inspects the endpoint URL
+        beyond the loopback + allowlist guards.
+        """
+        # Using a loopback endpoint whose path contains a red-herring
+        # 'ollama' token — provider still comes from api_style kwarg.
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:8080/ollama",
+            model="m",
+            http_post=lambda u, b, t: b"{}",
+            api_style="openai",
+        )
+        assert client.api_style == API_STYLE_OPENAI
+
+    # ----- explicit kwarg beats env -----
+
+    def test_explicit_kwarg_wins_over_env(self):
+        env = {
+            RESEARCH_LLM_ENDPOINT_ENV: "http://127.0.0.1:8080",
+            RESEARCH_LLM_API_STYLE_ENV: "openai",
+        }
+        client = LocalLLMClient(
+            model="m",
+            env=env,
+            api_style="ollama",
+            http_post=lambda u, b, t: b"{}",
+        )
+        assert client.api_style == API_STYLE_OLLAMA
+
+    # ----- chat wire body -----
+
+    def test_openai_chat_body_shape(self):
+        post, calls = self._post_returning(
+            {"choices": [{"message": {"content": "ok"}}]}
+        )
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:8080",
+            model="local-model",
+            http_post=post,
+            # default api_style=openai
+        )
+        client.chat("prompt", "system")
+        assert calls[0]["url"] == "http://127.0.0.1:8080/v1/chat/completions"
+        body = calls[0]["body"]
+        assert body["temperature"] == 0.0
+        assert "options" not in body
+        assert body["model"] == "local-model"
+        assert body["stream"] is False
+        assert body["messages"][0] == {"role": "system", "content": "system"}
+        assert body["messages"][1] == {"role": "user", "content": "prompt"}
+
+    def test_ollama_chat_body_shape(self):
+        post, calls = self._post_returning({"message": {"content": "ok"}})
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="local-model",
+            http_post=post,
+            api_style="ollama",
+        )
+        client.chat("prompt", "system")
+        assert calls[0]["url"] == "http://127.0.0.1:11434/api/chat"
+        body = calls[0]["body"]
+        assert body["options"] == {"temperature": 0.0}
+        assert "temperature" not in body
+        assert body["model"] == "local-model"
+
+    # ----- discovery per provider -----
+
+    def test_openai_discovery_url(self):
+        get, calls = self._get_returning({"data": [{"id": "a"}]})
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:8080",
+            model="a",
+            http_get=get,
+        )
+        client.list_models()
+        assert calls == ["http://127.0.0.1:8080/v1/models"]
+
+    def test_ollama_discovery_url(self):
+        get, calls = self._get_returning({"models": [{"name": "a"}]})
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="a",
+            http_get=get,
+            api_style="ollama",
+        )
+        client.list_models()
+        assert calls == ["http://127.0.0.1:11434/api/tags"]
+
+
 class TestTrustedLANConstants:
     def test_cloud_host_tokens_cover_expected(self):
         for token in (
@@ -648,30 +840,37 @@ class TestLocalLLMChat:
 
         return post, calls
 
-    def test_ollama_shape_response(self):
+    def test_ollama_chat_shape_with_explicit_style(self):
         post, calls = self._http_returning({"message": {"content": "hi"}})
         client = LocalLLMClient(
             endpoint="http://127.0.0.1:11434",
             model="local-model",
             http_post=post,
+            api_style="ollama",
         )
         assert client.chat("prompt", "system") == "hi"
         assert calls[0]["url"] == "http://127.0.0.1:11434/api/chat"
-        # temperature enforced in the wire body
         assert calls[0]["body"]["options"]["temperature"] == 0.0
+        assert "temperature" not in calls[0]["body"] or calls[0]["body"].get(
+            "temperature"
+        ) is None
         assert calls[0]["body"]["stream"] is False
         assert calls[0]["body"]["messages"][0]["role"] == "system"
 
-    def test_openai_compat_shape_response(self):
-        post, _ = self._http_returning(
+    def test_openai_chat_shape_by_default(self):
+        post, calls = self._http_returning(
             {"choices": [{"message": {"content": "hello"}}]}
         )
         client = LocalLLMClient(
-            endpoint="http://127.0.0.1:11434",
+            endpoint="http://127.0.0.1:8080",
             model="local-model",
             http_post=post,
+            # api_style not set → defaults to openai
         )
         assert client.chat("p", "s") == "hello"
+        assert calls[0]["url"] == "http://127.0.0.1:8080/v1/chat/completions"
+        assert calls[0]["body"]["temperature"] == 0.0
+        assert "options" not in calls[0]["body"]
 
     def test_missing_content_raises(self):
         post, _ = self._http_returning({"message": {"role": "assistant"}})
@@ -1273,7 +1472,7 @@ import urllib.error  # noqa: E402 (placed here for the helper above)
 
 
 class TestListModelsPaths:
-    def test_openai_compat_shape(self):
+    def test_openai_default_hits_v1_models(self):
         response = json.dumps(
             {"data": [{"id": "llama3.1"}, {"id": "gpt-oss-20b"}]}
         ).encode()
@@ -1282,11 +1481,29 @@ class TestListModelsPaths:
             endpoint="http://127.0.0.1:11434",
             model="llama3.1",
             http_get=get,
+            # default api_style=openai
         )
         assert client.list_models() == ["gpt-oss-20b", "llama3.1"]
         assert calls == ["http://127.0.0.1:11434/v1/models"]
 
-    def test_ollama_shape_fallback_when_v1_fails(self):
+    def test_ollama_hits_api_tags_only(self):
+        response = json.dumps(
+            {"models": [{"name": "mistral:7b"}, {"name": "phi3:mini"}]}
+        ).encode()
+        get, calls = _http_get_returning({"/api/tags": response})
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="mistral:7b",
+            http_get=get,
+            api_style="ollama",
+        )
+        assert client.list_models() == ["mistral:7b", "phi3:mini"]
+        assert calls == ["http://127.0.0.1:11434/api/tags"]
+
+    def test_openai_does_not_fall_back_to_ollama_path(self):
+        """Under provider selection, /v1/models failure raises
+        immediately — there is no cross-provider fallback.
+        """
         get, calls = _http_get_returning(
             {
                 "/v1/models": urllib.error.HTTPError(
@@ -1296,19 +1513,41 @@ class TestListModelsPaths:
                     {},
                     None,
                 ),
+                # /api/tags would succeed if tried, but it must NOT be
                 "/api/tags": json.dumps(
-                    {"models": [{"name": "mistral:7b"}, {"name": "phi3:mini"}]}
+                    {"models": [{"name": "should-not-appear"}]}
                 ).encode(),
             }
         )
         client = LocalLLMClient(
             endpoint="http://127.0.0.1:11434",
-            model="mistral:7b",
+            model="anything",
             http_get=get,
         )
-        assert client.list_models() == ["mistral:7b", "phi3:mini"]
-        assert calls[0].endswith("/v1/models")
-        assert calls[1].endswith("/api/tags")
+        with pytest.raises(ModelDiscoveryError):
+            client.list_models()
+        # Only /v1/models was tried, not /api/tags
+        assert calls == ["http://127.0.0.1:11434/v1/models"]
+
+    def test_ollama_does_not_fall_back_to_openai_path(self):
+        get, calls = _http_get_returning(
+            {
+                "/api/tags": urllib.error.URLError("refused"),
+                # /v1/models would succeed if tried, but it must NOT be
+                "/v1/models": json.dumps(
+                    {"data": [{"id": "should-not-appear"}]}
+                ).encode(),
+            }
+        )
+        client = LocalLLMClient(
+            endpoint="http://127.0.0.1:11434",
+            model="anything",
+            http_get=get,
+            api_style="ollama",
+        )
+        with pytest.raises(ModelDiscoveryError):
+            client.list_models()
+        assert calls == ["http://127.0.0.1:11434/api/tags"]
 
     def test_returns_empty_when_endpoint_exposes_no_listing(self):
         response = json.dumps({"data": []}).encode()
@@ -1320,38 +1559,17 @@ class TestListModelsPaths:
         )
         assert client.list_models() == []
 
-    def test_all_paths_failing_raises_discovery_error(self):
-        error = urllib.error.URLError("connection refused")
-        get, calls = _http_get_returning(
-            {"/v1/models": error, "/api/tags": error}
-        )
+    def test_non_json_response_raises(self):
+        # Under provider selection there is no fallback — a
+        # non-JSON body raises directly.
+        get, _ = _http_get_returning({"/v1/models": b"not json"})
         client = LocalLLMClient(
             endpoint="http://127.0.0.1:11434",
             model="anything",
             http_get=get,
         )
-        with pytest.raises(ModelDiscoveryError):
+        with pytest.raises(ModelDiscoveryError, match="non-JSON"):
             client.list_models()
-        # Both paths were attempted before giving up.
-        assert any(url.endswith("/v1/models") for url in calls)
-        assert any(url.endswith("/api/tags") for url in calls)
-
-    def test_non_json_response_causes_next_path(self):
-        # First path returns garbage, second returns a valid list.
-        get, calls = _http_get_returning(
-            {
-                "/v1/models": b"not json",
-                "/api/tags": json.dumps(
-                    {"models": [{"name": "phi3:mini"}]}
-                ).encode(),
-            }
-        )
-        client = LocalLLMClient(
-            endpoint="http://127.0.0.1:11434",
-            model="phi3:mini",
-            http_get=get,
-        )
-        assert client.list_models() == ["phi3:mini"]
 
     def test_list_is_deterministic_sorted(self):
         response = json.dumps(

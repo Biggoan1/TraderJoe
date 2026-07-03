@@ -270,8 +270,27 @@ endpoints are accepted:
 | Env var | Purpose | Default |
 |---|---|---|
 | `RESEARCH_LLM_ENDPOINT` | Base URL of the inference server | `http://127.0.0.1:8080` |
+| `RESEARCH_LLM_API_STYLE` | Provider protocol: `openai` or `ollama` | `openai` |
 | `RESEARCH_LLM_ALLOW_REMOTE` | Opt-in to allow a non-loopback endpoint | `false` |
 | `RESEARCH_LLM_ALLOWED_HOSTS` | Comma-separated allowlist of trusted hosts | *(empty)* |
+
+### API style — pick the provider protocol explicitly
+
+The client speaks one of two protocols, selected only via
+`RESEARCH_LLM_API_STYLE`:
+
+| Style | Model listing | Chat |
+|---|---|---|
+| `openai` (default) | `GET /v1/models` | `POST /v1/chat/completions` |
+| `ollama` | `GET /api/tags` | `POST /api/chat` |
+
+There is no automatic detection.  The client never inspects the
+endpoint URL or response bodies to guess the provider — it always
+uses the paths and body shape configured for the selected style.
+
+For a local llama.cpp / llama-swap / LM Studio / Hermes Gateway
+server, keep the default (`openai`).  For a local Ollama install,
+set `RESEARCH_LLM_API_STYLE=ollama`.
 
 ### Loopback mode — the default
 
