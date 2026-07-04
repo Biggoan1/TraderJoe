@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# scripts/research-run-matrix — run offline validation across
+# multiple historical windows.  Warehouse-first per window.
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+DEFAULT_ENV_FILENAME=".env.research"
+CUSTOM_ENV_FILE=""
+FORWARDED_ARGS=()
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --env-file)   CUSTOM_ENV_FILE="$2"; shift 2 ;;
+    --env-file=*) CUSTOM_ENV_FILE="${1#--env-file=}"; shift 1 ;;
+    --) shift; FORWARDED_ARGS+=("$@"); break ;;
+    *)  FORWARDED_ARGS+=("$1"); shift ;;
+  esac
+done
+
+ENV_FILE=""
+if [ -n "$CUSTOM_ENV_FILE" ] && [ -f "$CUSTOM_ENV_FILE" ]; then
+  ENV_FILE="$CUSTOM_ENV_FILE"
+elif [ -f "./$DEFAULT_ENV_FILENAME" ]; then
+  ENV_FILE="./$DEFAULT_ENV_FILENAME"
+elif [ -f "$REPO_ROOT/$DEFAULT_ENV_FILENAME" ]; then
+  ENV_FILE="$REPO_ROOT/$DEFAULT_ENV_FILENAME"
+fi
+
+if [ -n "$ENV_FILE" ]; then
+  BASENAME="$(basename "$ENV_FILE")"
+  case "$BASENAME" in
+    .env|.env.production)
+      echo "ERROR: refusing to load $BASENAME via research-run-matrix" >&2
+      exit 1
+      ;;
+  esac
+  set -a
+  # shellcheck source=/dev/null
+  . "$ENV_FILE"
+  set +a
+fi
+
+export HERMES_CONTEXT="research"
+exec python -m strategy.warehouse.operator.run_matrix "${FORWARDED_ARGS[@]}"
