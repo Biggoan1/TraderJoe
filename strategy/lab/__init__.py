@@ -24,12 +24,28 @@ from strategy.lab.experiment_runner import (
     ExperimentManifest,
     run_strategy_experiment,
 )
+from strategy.lab.registry import (
+    RegistryConflictError,
+    StrategyNotFoundError,
+    StrategyRegistration,
+    StrategyRegistry,
+    discover_strategies,
+    get_default_registry,
+    register,
+)
 
 __all__ = [
     "ExperimentBundle",
     "ExperimentManifest",
+    "RegistryConflictError",
     "Strategy",
     "StrategyIdentity",
+    "StrategyNotFoundError",
+    "StrategyRegistration",
+    "StrategyRegistry",
+    "discover_strategies",
+    "get_default_registry",
+    "register",
     "run_strategy_experiment",
     "stable_parameter_hash",
 ]
