@@ -8,8 +8,9 @@ Trader Joe release history.
 
 **Date:** 2026-07-03
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase56_provider_plugins` (`t_22210825`)
+**Commit:** `4c41212`
 
 ### Added
 - `strategy/providers/` subpackage with three plugins:

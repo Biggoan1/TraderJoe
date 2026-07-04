@@ -1578,8 +1578,8 @@ reversible, read-only:
   producer.
 - `t_phase56_gap_detection` — scanner + artifact writer.
 - `t_phase56_provider_plugins` — Alpaca (wraps
-  `ResearchAccountClient`), CSV, Parquet plugins. **In Review**
-  (`t_22210825`; `strategy/providers/`; +44 tests; commit pending).
+  `ResearchAccountClient`), CSV, Parquet plugins. **Done**
+  (`t_22210825`; `strategy/providers/`; +44 tests; commit `4c41212`).
 - `t_phase56_import_pipeline` — bulk-import runners, resumable.
 - `t_phase56_incremental_sync` — `warehouse-sync` nightly runner.
 - `t_phase56_research_cache` — `WarehouseReader` with
