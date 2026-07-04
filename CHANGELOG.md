@@ -4,6 +4,67 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Provider plugins
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase56_provider_plugins` (`t_22210825`)
+
+### Added
+- `strategy/providers/` subpackage with three plugins:
+  * `alpaca.py` — wraps the existing `ResearchAccountClient` as
+    a `MarketDataProvider`.  Translates
+    `AdjustmentMode` <-> Alpaca vocab; maps
+    `/v2/stocks/bars` and `/v2/calendar` payloads onto `Bar` /
+    `CalendarDay`.  Corporate actions + symbol metadata return
+    empty batches with warnings — Alpaca doesn't expose them at
+    this layer.  Client-level failures surface as
+    `MarketDataRequestError`.
+  * `csv.py` — reads local CSVs with canonical columns
+    (`symbol, timestamp, open, high, low, close, volume,
+    [vwap], [trade_count]`).  Configured with an interval and
+    adjustment mode; refuses fetch calls whose interval differs.
+    Rejects missing files and missing columns.
+  * `parquet.py` — reads canonical-schema Parquet files through
+    `strategy.warehouse.parquet_io.read_bars`, then filters by
+    symbol / start / end / interval.
+- Plugin registry (`strategy.providers.register` /
+  `get_plugin` / `registered`).  Idempotent same-factory
+  re-registration; refuses to shadow an existing name with a
+  different factory.
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports.
+- No order-path token references.
+- No credential env-var reads at plugin level (Alpaca creds
+  stay inside `ResearchAccountClient`).
+- No `ApprovalRecord` / `PromotionEntry` construction.
+- `FeatureFlags.all_disabled == True` after import + fetch.
+
+### Testing
+- +44 new tests in `tests/test_providers.py`.  Full suite:
+  **1645 passing** (was 1601; +44 net new).
+- Coverage: registry semantics; Alpaca capabilities + bar
+  mapping + adjustment translation + intraday guards + client
+  failure translation + bad-row skip + bad-response shape
+  rejection + calendar mapping + holiday flag + unsupported
+  surfaces; CSV canonical parsing + per-column filtering +
+  missing file / column rejection; Parquet Protocol conformance
+  + read via warehouse layout + filter by symbol / window /
+  interval; source-safety (order path, live-runner, credential
+  env, ApprovalRecord, PromotionEntry).  Every plugin passes
+  the `isinstance(prov, MarketDataProvider)` conformance check.
+
+### Not in this card (deferred)
+- Polygon, Databento, Tiingo, Financial Modeling Prep, Alpha
+  Vantage plugins — follow-up cards.
+- Manual-import attestation flow — Phase 5.6 gap-detection card.
+- Provider priority resolution / `WarehouseReader` fallback —
+  `t_phase56_research_cache`.
+
+---
+
 ## Unreleased — Phase 5.6: Parquet bar storage
 
 **Date:** 2026-07-03
