@@ -4,6 +4,76 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Incremental sync runner
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase56_incremental_sync` (`t_cf80bf36`)
+
+### Added
+- `strategy/warehouse/incremental_sync.py` — nightly append-only
+  runner that reads a dataset's manifest + on-disk partitions
+  for the latest observed bar timestamp, asks the highest-
+  priority provider for bars strictly newer than that
+  timestamp, and appends them to the existing partition tree.
+- `SyncPolicy(providers=(...), dry_run=False, end="")` — the
+  priority-ordered provider list plus a dry-run toggle.  Empty
+  provider list rejected on construction.
+- `SyncReport` — per-run summary: `latest_before` → `latest_after`,
+  `bars_appended`, `files_appended` (WrittenFile entries), the
+  chosen provider, per-call trace, warnings, dry-run flag.
+- `ProviderLedger` — per-provider call + bar counts accumulated
+  across a sync session.  Research artifact only; does not
+  influence provider selection.
+- `sync_dataset(layout, dataset_id, policy, ledger=None)` —
+  never redownloads existing bars; strictly-newer filter drops
+  duplicates.  Falls through the priority list if the primary
+  returns empty or raises.  Refuses to mutate a validated
+  manifest (returns a warning telling the operator to run
+  `warehouse-revise` instead).  Dry-run mode reports planned
+  appends without writing.
+- `sync_all(layout, dataset_ids, policy, ledger=None)` — batch
+  runner.  Per-dataset failures caught and surfaced on the
+  matching report entry instead of aborting the batch.
+- `IncrementalSyncError` — subclass of
+  `WarehouseIntegrityError` for sync-specific violations
+  (missing warehouse fields, empty symbols, empty provider
+  list).
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports.
+- No order-path token references.
+- No credential env-var reads.
+- No `ApprovalRecord` / `PromotionEntry` construction.
+- `FeatureFlags.all_disabled == True` after sync runs.
+
+### Testing
+- +20 new tests in
+  `tests/test_warehouse_incremental_sync.py` against
+  deterministic stub providers.  Full suite: **1691 passing**
+  (was 1671; +20 net new).
+- Coverage: appends strictly-newer bars, no-op when provider
+  returns empty, manifest `end_date` advances on append,
+  provider priority (falls through empty / raising primary,
+  stops after first success), dry-run leaves manifest and disk
+  unchanged while report still describes the plan, refuses to
+  sync validated dataset, ledger tracks per-provider calls +
+  bar counts, SyncPolicy validation, `sync_all` returns
+  per-dataset report + surfaces missing dataset as warning
+  rather than exception, missing-warehouse-fields rejection,
+  no-symbols rejection, source safety, feature-flag invariance.
+
+### Not in this card (deferred)
+- Corporate-action revision replay — `warehouse-revise` under
+  `t_phase56_data_versioning` follow-up.
+- Automated cron scheduling — operator concern outside the
+  Kanban surface.
+- Dashboard rendering of `SyncReport` /
+  `ProviderLedger` — `t_phase55_dashboard_plan`'s territory.
+
+---
+
 ## Unreleased — Phase 5.6: Import pipeline
 
 **Date:** 2026-07-03
