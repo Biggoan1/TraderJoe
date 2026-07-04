@@ -10,6 +10,7 @@ Trader Joe release history.
 **Branch:** sprint-3/daily-digest
 **Status:** Done
 **Card:** `t_phase56_research_cache` (`t_e6bf82a9`)
+**Commit:** `b3b7335`
 
 ### Added
 - `strategy/warehouse/research_cache.py` — primary read
