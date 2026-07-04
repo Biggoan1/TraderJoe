@@ -1584,8 +1584,8 @@ reversible, read-only:
   **Done** (`t_31308fc2`;
   `strategy/warehouse/import_pipeline.py`; +26 tests; commit `a898d6e`).
 - `t_phase56_incremental_sync` — `warehouse-sync` nightly runner.
-  **In Review** (`t_cf80bf36`;
-  `strategy/warehouse/incremental_sync.py`; +20 tests; commit pending).
+  **Done** (`t_cf80bf36`;
+  `strategy/warehouse/incremental_sync.py`; +20 tests; commit `7b6b62f`).
 - `t_phase56_research_cache` — `WarehouseReader` with
   provider-priority fallback and version pinning.
 

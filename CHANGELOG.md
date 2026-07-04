@@ -8,8 +8,9 @@ Trader Joe release history.
 
 **Date:** 2026-07-03
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase56_incremental_sync` (`t_cf80bf36`)
+**Commit:** `7b6b62f`
 
 ### Added
 - `strategy/warehouse/incremental_sync.py` — nightly append-only
