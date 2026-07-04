@@ -57,6 +57,14 @@ from strategy.lab.performance_metrics import (
     build_equity_curve,
     compute_performance_metrics,
 )
+from strategy.lab.regime_tagger import (
+    RegimeMetrics,
+    RegimeSpec,
+    RegimeTag,
+    default_regime_specs,
+    regime_conditioned_metrics,
+    tag_events,
+)
 
 __all__ = [
     "ExperimentBundle",
@@ -64,6 +72,9 @@ __all__ = [
     "ExperimentProposal",
     "HoldingPeriod",
     "HypothesisQueue",
+    "RegimeMetrics",
+    "RegimeSpec",
+    "RegimeTag",
     "Leaderboard",
     "LeaderboardEntry",
     "ParameterGrid",
@@ -78,6 +89,9 @@ __all__ = [
     "SweepRow",
     "build_equity_curve",
     "compute_performance_metrics",
+    "default_regime_specs",
+    "regime_conditioned_metrics",
+    "tag_events",
     "compute_score_metrics",
     "discover_strategies",
     "entry_from_bundle",

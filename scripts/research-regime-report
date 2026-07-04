@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# scripts/research-regime-report — regime-conditioned breakdown of a matrix run.
+# Read-only; never writes to market_data/ or reports/validation/.
+set -euo pipefail
+exec python -m strategy.lab.regime_report "$@"
