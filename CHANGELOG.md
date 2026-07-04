@@ -4,6 +4,49 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Gap detection reports
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Done
+**Card:** `t_phase56_gap_detection` (`t_b06ec41d`)
+
+### Added
+- `strategy/warehouse/gap_detection.py` — coverage-gap
+  scanner + report producer.
+- `detect_gaps(layout, dataset_id, window_start, window_end,
+  calendar=None, exclude_weekends=True, expected_symbols=None,
+  minimum_bars_per_day=1)` — returns a deterministic
+  `GapReport`.  Kinds detected: `missing_trading_day`,
+  `missing_symbol`, `no_coverage`, `partial_day` (sub-daily
+  intervals), `weekend_bars_present`, `holiday_bars_present`
+  (calendar-aware).
+- `Gap`, `GapReport` — frozen dataclasses for the result
+  surface.  Gaps sorted by `(symbol, date, kind)` ascending.
+- `write_report(report, output_dir)` — persists JSON with a
+  unique per-pass filename.
+- `GapDetectionError` — subclass of `WarehouseIntegrityError`.
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports; no order-path tokens; no credential
+  env-var reads; no `ApprovalRecord` / `PromotionEntry`
+  construction.  `FeatureFlags.all_disabled == True` after
+  every scan.
+
+### Testing
+- +18 tests in `tests/test_warehouse_gap_detection.py`.  Full
+  suite: **1779 passing** (was 1761; +18 net new).
+- Coverage: fully-covered dataset (zero gaps), missing weekdays
+  flagged, weekends excluded by default, weekend-bars-present
+  detection, holiday-aware detection via CalendarDay input,
+  no_coverage for symbols with no bars, expected_symbols
+  override, partial_day for sub-daily intervals, empty /
+  reversed bounds rejected, missing dataset raises,
+  deterministic ordering, serialization, write_report creates
+  output dir, source safety, feature-flag invariance.
+
+---
+
 ## Unreleased — Phase 5.6: Warehouse integrity validation
 
 **Date:** 2026-07-03

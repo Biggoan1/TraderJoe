@@ -1581,6 +1581,8 @@ reversible, read-only:
   producer. **Done** (`t_ababb2f7`;
   `strategy/warehouse/validation.py`; +18 tests).
 - `t_phase56_gap_detection` — scanner + artifact writer.
+  **Done** (`t_b06ec41d`;
+  `strategy/warehouse/gap_detection.py`; +18 tests).
 - `t_phase56_provider_plugins` — Alpaca (wraps
   `ResearchAccountClient`), CSV, Parquet plugins. **Done**
   (`t_22210825`; `strategy/providers/`; +44 tests; commit `4c41212`).

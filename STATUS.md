@@ -17,7 +17,7 @@
 - Status: Research Alpaca client validated + env isolation + launchers + model config; Local LLM Research Assistant ready
 
 ## Testing
-- Tests passing: 1761
+- Tests passing: 1779
 - Tests failing: 0
 - Last run: 2026-07-03
 
