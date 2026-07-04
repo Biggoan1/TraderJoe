@@ -1581,6 +1581,8 @@ reversible, read-only:
   `ResearchAccountClient`), CSV, Parquet plugins. **Done**
   (`t_22210825`; `strategy/providers/`; +44 tests; commit `4c41212`).
 - `t_phase56_import_pipeline` — bulk-import runners, resumable.
+  **In Review** (`t_31308fc2`;
+  `strategy/warehouse/import_pipeline.py`; +26 tests; commit pending).
 - `t_phase56_incremental_sync` — `warehouse-sync` nightly runner.
 - `t_phase56_research_cache` — `WarehouseReader` with
   provider-priority fallback and version pinning.

@@ -4,6 +4,72 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Import pipeline
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase56_import_pipeline` (`t_31308fc2`)
+
+### Added
+- `strategy/warehouse/import_pipeline.py` — bulk provider fetch,
+  chunked writes, resumable via SQLite queue, manifest thread-
+  through, rebuild-from-disk workflow.
+- `import_bars(layout, provider, dataset_id, symbols, …)` —
+  chunks symbols to respect provider rate limits, calls
+  `MarketDataProvider.fetch_daily_bars` / `fetch_intraday_bars`,
+  writes bars via `strategy.warehouse.parquet_io.write_bars`,
+  and lands a `DatasetManifest` (Phase 5.6 warehouse fields
+  populated: `provider`, `interval`, `asset_class`,
+  `adjustment_mode`, `validation_status=unvalidated`).
+  Immutability guard: refuses to overwrite a validated manifest
+  without `force=True`.
+- `PendingDownloadsQueue` — SQLite-backed per-chunk status
+  tracking (`pending → inflight → done | failed`).  Idempotent
+  enqueue.  Resumable across process restarts.
+- `rebuild_manifest(layout, dataset_id, …)` — regenerates a
+  manifest from on-disk Parquet files.  Computes sha256 + row
+  count + symbol coverage + date bounds by reading each file
+  once.  Useful after operator backfills or warehouse moves.
+- `ImportReport` — frozen dataclass summarizing one
+  `import_bars` run: symbols requested / ok / empty, per-file
+  metadata, warnings, manifest path.
+- `ImportPipelineError` — subclass of `WarehouseIntegrityError`
+  for pipeline-specific violations (bad chunk size, empty
+  symbols, missing partition).
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports.
+- No order-path token references.
+- No credential env-var reads.
+- No `ApprovalRecord` / `PromotionEntry` construction.
+- `FeatureFlags.all_disabled == True` after import runs.
+
+### Testing
+- +26 new tests in `tests/test_warehouse_import_pipeline.py`
+  against a deterministic `StubProvider` — no network.  Full
+  suite: **1671 passing** (was 1645; +26 net new).
+- Coverage: end-to-end write + manifest, per-symbol status
+  propagation, chunk-size validation and output invariance,
+  file placement under `dataset_dir`, sha256 / row_count /
+  size fields threaded into manifest, catalog integration
+  through `DataCatalog.from_warehouse_layout`, symbols_empty
+  stashed in metadata, immutability guard refuses to overwrite
+  validated manifest, queue status transitions, pending-list
+  semantics, unknown status rejection, enqueue idempotence,
+  resumability (queue tracks completed chunks; provider
+  failure marks remaining chunks FAILED), chunk validation
+  (zero, empty symbols, empty dataset_id), rebuild manifest
+  from disk, missing-partition rejection, checksum parity vs
+  first import, source safety.
+
+### Not in this card (deferred)
+- Incremental (append-only) sync — `t_phase56_incremental_sync`.
+- Gap detection reports — `t_phase56_gap_detection`.
+- DuckDB analytical query surface — `t_phase56_duckdb_queries`.
+
+---
+
 ## Unreleased — Phase 5.6: Provider plugins
 
 **Date:** 2026-07-03
