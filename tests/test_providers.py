@@ -235,6 +235,54 @@ class TestAlpacaProviderBars:
             prov.fetch_daily_bars(["AAPL"], "2020-05-01", "2020-05-31")
 
 
+class TestAlpacaProviderMultiSymbolResponse:
+    """Regression tests for the bug where a 5-symbol daily-bar
+    request against a paginated Alpaca payload returned only the
+    lexicographically-smallest symbol (AAPL) with data and marked
+    MSFT/NVDA/SPY/QQQ as empty.  The fix is in
+    ResearchAccountClient.fetch_bars; these tests exercise the
+    provider layer with an already-merged payload to prove the
+    provider does the right thing when every symbol has bars.
+    """
+
+    def _five_symbol_payload(self):
+        # 30 daily bars per symbol, all five symbols populated.
+        return {
+            "bars": {
+                sym: [
+                    {
+                        "t": f"2020-01-{d:02d}T14:30:00+00:00",
+                        "o": 100.0, "h": 101.0, "l": 99.5, "c": 100.5,
+                        "v": 1_000_000,
+                    }
+                    for d in range(1, 31)
+                ]
+                for sym in ("AAPL", "MSFT", "NVDA", "SPY", "QQQ")
+            }
+        }
+
+    def test_all_symbols_marked_ok_when_payload_covers_them(self):
+        client = _StubAlpacaClient(self._five_symbol_payload())
+        prov = alpaca_module.AlpacaProvider(client=client)
+        resp = prov.fetch_daily_bars(
+            ["AAPL", "MSFT", "NVDA", "SPY", "QQQ"],
+            "2020-01-01", "2020-01-30",
+        )
+        for sym in ("AAPL", "MSFT", "NVDA", "SPY", "QQQ"):
+            assert resp.per_symbol_status[sym] == "ok", (
+                f"{sym} marked {resp.per_symbol_status[sym]!r}; "
+                "expected 'ok' after pagination fix"
+            )
+        # Total bars = 5 symbols × 30 days
+        assert len(resp.batch) == 150
+        # Bars for every symbol appear
+        by_symbol: Dict[str, List] = {}
+        for bar in resp.batch:
+            by_symbol.setdefault(bar.symbol, []).append(bar)
+        for sym in ("AAPL", "MSFT", "NVDA", "SPY", "QQQ"):
+            assert len(by_symbol[sym]) == 30
+
+
 class TestAlpacaProviderCalendar:
     def test_calendar_mapping(self):
         client = _StubAlpacaClient(

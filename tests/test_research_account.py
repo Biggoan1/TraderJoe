@@ -516,7 +516,8 @@ class TestFetchBars:
         )
         client = ResearchAccountClient(env=TEST_ENV, http_get=http_get)
         result = client.fetch_bars(["AAPL"])
-        assert result == {"bars": {"AAPL": []}}
+        # fetch_bars merges pages and clears next_page_token
+        assert result == {"bars": {"AAPL": []}, "next_page_token": None}
         assert len(calls) == 1
         # Sent URL matches the deterministic request builder
         assert calls[0][0].url == client.build_bars_request(["AAPL"]).url
@@ -552,6 +553,149 @@ class TestFetchBars:
         )
         client.fetch_bars(["AAPL"])
         assert calls[0][1] == 5.0
+
+
+class TestFetchBarsPagination:
+    """Regression tests for the pagination bug that caused
+    multi-symbol imports to drop every symbol except the
+    lexicographically-smallest one when the first 1000-row page
+    filled entirely with that symbol's bars.
+    """
+
+    def _paged_http_get(self, pages):
+        """pages: list of dicts to return in order.  Returns a fake
+        http_get that walks through them.
+        """
+        calls: List[Tuple[ResearchAccountRequest, float]] = []
+        page_iter = iter(pages)
+
+        def _http_get(request: ResearchAccountRequest, timeout: float) -> bytes:
+            calls.append((request, timeout))
+            return json.dumps(next(page_iter)).encode("utf-8")
+
+        return _http_get, calls
+
+    def test_single_page_no_pagination(self):
+        http_get, calls = self._paged_http_get([
+            {"bars": {"AAPL": [{"t": "2020-01-02"}]}, "next_page_token": None}
+        ])
+        client = ResearchAccountClient(env=TEST_ENV, http_get=http_get)
+        result = client.fetch_bars(["AAPL"])
+        assert len(calls) == 1
+        assert result["bars"] == {"AAPL": [{"t": "2020-01-02"}]}
+        assert result["next_page_token"] is None
+
+    def test_follows_next_page_token(self):
+        # Page 1: 1000 AAPL bars, page_token points to page 2.
+        # Page 2: 500 MSFT + 500 NVDA + 500 SPY + 500 QQQ, no token.
+        page1 = {
+            "bars": {
+                "AAPL": [{"t": f"2020-01-{d:02d}"} for d in range(1, 31)],
+            },
+            "next_page_token": "page2-token-abc",
+        }
+        page2 = {
+            "bars": {
+                "MSFT": [{"t": f"2020-01-{d:02d}"} for d in range(1, 31)],
+                "NVDA": [{"t": f"2020-01-{d:02d}"} for d in range(1, 31)],
+                "SPY":  [{"t": f"2020-01-{d:02d}"} for d in range(1, 31)],
+                "QQQ":  [{"t": f"2020-01-{d:02d}"} for d in range(1, 31)],
+            },
+            "next_page_token": None,
+        }
+        http_get, calls = self._paged_http_get([page1, page2])
+        client = ResearchAccountClient(env=TEST_ENV, http_get=http_get)
+        result = client.fetch_bars(
+            ["AAPL", "MSFT", "NVDA", "SPY", "QQQ"]
+        )
+        # Two HTTP calls total
+        assert len(calls) == 2
+        # Second call carries the page_token as a query param
+        assert "page_token=page2-token-abc" in calls[1][0].url
+        # Every symbol present in the merged bars
+        assert set(result["bars"].keys()) == {
+            "AAPL", "MSFT", "NVDA", "SPY", "QQQ"
+        }
+        for sym in ("AAPL", "MSFT", "NVDA", "SPY", "QQQ"):
+            assert len(result["bars"][sym]) == 30
+
+    def test_merges_bars_when_same_symbol_spans_pages(self):
+        # AAPL's bars split across three pages.
+        page1 = {"bars": {"AAPL": [{"t": "day1"}]}, "next_page_token": "t2"}
+        page2 = {"bars": {"AAPL": [{"t": "day2"}]}, "next_page_token": "t3"}
+        page3 = {"bars": {"AAPL": [{"t": "day3"}]}, "next_page_token": None}
+        http_get, calls = self._paged_http_get([page1, page2, page3])
+        client = ResearchAccountClient(env=TEST_ENV, http_get=http_get)
+        result = client.fetch_bars(["AAPL"])
+        assert len(calls) == 3
+        assert [b["t"] for b in result["bars"]["AAPL"]] == ["day1", "day2", "day3"]
+        # Second call carries page_token=t2, third carries page_token=t3
+        assert "page_token=t2" in calls[1][0].url
+        assert "page_token=t3" in calls[2][0].url
+
+    def test_duplicate_token_breaks_loop(self):
+        page1 = {"bars": {"AAPL": [{"t": "d1"}]}, "next_page_token": "same"}
+        page2 = {"bars": {"AAPL": [{"t": "d2"}]}, "next_page_token": "same"}
+        http_get, calls = self._paged_http_get([page1, page2, {"bars": {}}])
+        client = ResearchAccountClient(env=TEST_ENV, http_get=http_get)
+        result = client.fetch_bars(["AAPL"])
+        # Loops break after the duplicate token is spotted; only two
+        # calls issued (never a third).
+        assert len(calls) == 2
+        assert [b["t"] for b in result["bars"]["AAPL"]] == ["d1", "d2"]
+
+    def test_missing_next_page_token_treated_as_end(self):
+        # A payload without the key at all is treated the same as
+        # next_page_token: None.
+        http_get, calls = self._paged_http_get([
+            {"bars": {"AAPL": [{"t": "d1"}]}}
+        ])
+        client = ResearchAccountClient(env=TEST_ENV, http_get=http_get)
+        result = client.fetch_bars(["AAPL"])
+        assert len(calls) == 1
+        assert result["bars"] == {"AAPL": [{"t": "d1"}]}
+
+    def test_non_dict_bars_shape_within_page_rejected(self):
+        # bars is a list, not an object — should raise clearly.
+        http_get, _ = self._paged_http_get([
+            {"bars": ["not", "a", "dict"], "next_page_token": None}
+        ])
+        client = ResearchAccountClient(env=TEST_ENV, http_get=http_get)
+        with pytest.raises(ResearchAccountRequestError, match="'bars' field"):
+            client.fetch_bars(["AAPL"])
+
+    def test_pagination_hard_cap_enforced(self):
+        # Every page yields the same token, but each token is
+        # unique-per-page so the dup-check does NOT trip.  Instead,
+        # the MAX_BARS_PAGES cap must fire.
+        from strategy.research_account import MAX_BARS_PAGES
+        pages = [
+            {"bars": {"AAPL": [{"t": f"d{i}"}]},
+             "next_page_token": f"tok-{i}"}
+            for i in range(MAX_BARS_PAGES + 5)
+        ]
+        http_get, calls = self._paged_http_get(pages)
+        client = ResearchAccountClient(env=TEST_ENV, http_get=http_get)
+        with pytest.raises(ResearchAccountRequestError, match="pagination"):
+            client.fetch_bars(["AAPL"])
+        # Exactly MAX_BARS_PAGES HTTP requests issued
+        assert len(calls) == MAX_BARS_PAGES
+
+    def test_page_token_never_leaked_in_repr(self):
+        # A follow-up request's repr must still redact credentials —
+        # the page_token is not a credential but it goes in the URL,
+        # so this test just re-asserts the credential redaction on a
+        # page_token-carrying request.
+        client = ResearchAccountClient(env=TEST_ENV)
+        request = client.build_bars_request(
+            ["AAPL"], page_token="secret-looking-token"
+        )
+        assert "page_token=secret-looking-token" in request.url
+        text = repr(request)
+        # Credentials still redacted
+        assert "test-api-key" not in text
+        assert "test-secret-key" not in text
+        assert "***REDACTED***" in text
 
 
 class TestListCalendar:

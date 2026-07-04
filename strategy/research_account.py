@@ -87,6 +87,11 @@ DEFAULT_BAR_LIMIT = 1000
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_ADJUSTMENT = "raw"
 DEFAULT_FEED = "iex"
+# Safety cap on page_token follow-ups per fetch_bars call.  Alpaca
+# returns at most limit (1000) bars per page; 200 pages = 200,000
+# bars, enough for ~120 symbols × 6.5y of daily data.  Prevents an
+# infinite loop if the server returns the same token twice.
+MAX_BARS_PAGES = 200
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +328,7 @@ class ResearchAccountClient:
         limit: int = DEFAULT_BAR_LIMIT,
         adjustment: str = DEFAULT_ADJUSTMENT,
         feed: str = DEFAULT_FEED,
+        page_token: Optional[str] = None,
     ) -> ResearchAccountRequest:
         if not symbols:
             raise ResearchAccountConfigError("symbols is required")
@@ -339,6 +345,8 @@ class ResearchAccountClient:
             params["start"] = start
         if end:
             params["end"] = end
+        if page_token:
+            params["page_token"] = page_token
         return self._build_request(
             "GET", BARS_PATH, params, endpoint_kind=ENDPOINT_KIND_DATA
         )
@@ -410,21 +418,71 @@ class ResearchAccountClient:
         adjustment: str = DEFAULT_ADJUSTMENT,
         feed: str = DEFAULT_FEED,
     ) -> Dict[str, Any]:
-        request = self.build_bars_request(
-            symbols=symbols,
-            timeframe=timeframe,
-            start=start,
-            end=end,
-            limit=limit,
-            adjustment=adjustment,
-            feed=feed,
-        )
-        payload = self._perform(request)
-        if not isinstance(payload, dict):
-            raise ResearchAccountRequestError(
-                f"bars response is not an object: {type(payload).__name__}"
+        """Fetch bars from ``/v2/stocks/bars``, following
+        ``next_page_token`` until every page is drained.
+
+        Alpaca packs one page (default ``limit=1000`` bars) sorted
+        by symbol.  For a multi-symbol × multi-year request the
+        first page can fill entirely with one symbol; the remaining
+        symbols only appear on subsequent pages.  This method
+        transparently merges those pages so callers see the
+        complete ``bars`` map in a single response.
+
+        Safety cap: ``MAX_BARS_PAGES`` pages per call.  A repeat of
+        the same ``next_page_token`` also breaks the loop — a
+        misbehaving server cannot spin us forever.
+        """
+        merged_bars: Dict[str, List[Any]] = {}
+        page_token: Optional[str] = None
+        seen_tokens: set = set()
+        last_payload: Dict[str, Any] = {}
+        for _ in range(MAX_BARS_PAGES):
+            request = self.build_bars_request(
+                symbols=symbols,
+                timeframe=timeframe,
+                start=start,
+                end=end,
+                limit=limit,
+                adjustment=adjustment,
+                feed=feed,
+                page_token=page_token,
             )
-        return payload
+            payload = self._perform(request)
+            if not isinstance(payload, dict):
+                raise ResearchAccountRequestError(
+                    f"bars response is not an object: {type(payload).__name__}"
+                )
+            last_payload = payload
+            page_bars = payload.get("bars") or {}
+            if not isinstance(page_bars, dict):
+                raise ResearchAccountRequestError(
+                    "bars response 'bars' field is not an object: "
+                    f"{type(page_bars).__name__}"
+                )
+            for symbol, rows in page_bars.items():
+                if not isinstance(rows, list):
+                    continue
+                merged_bars.setdefault(symbol, []).extend(rows)
+            next_token = payload.get("next_page_token")
+            if not next_token:
+                break
+            if next_token in seen_tokens:
+                # Server returned a duplicate token — refuse to loop.
+                break
+            seen_tokens.add(next_token)
+            page_token = next_token
+        else:
+            # Loop exhausted without hitting `break` — hit the cap.
+            raise ResearchAccountRequestError(
+                f"bars pagination exceeded {MAX_BARS_PAGES} pages; "
+                "refusing to loop"
+            )
+        # Return the shape callers already expect, with the merged
+        # bars dict and next_page_token cleared.
+        merged: Dict[str, Any] = dict(last_payload)
+        merged["bars"] = merged_bars
+        merged["next_page_token"] = None
+        return merged
 
     def list_calendar(
         self,
