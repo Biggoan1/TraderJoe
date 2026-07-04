@@ -363,6 +363,59 @@ class TestAnalystIntegration:
                 == report.report_id
             )
 
+    def test_llm_prompt_size_bounded_by_compact_payload(self, tmp_path):
+        """The LLM prompt passed to chat() must stay below the
+        CompactPayloadLimits.max_prompt_chars ceiling.  This is the
+        default now — CompactAnalystSource wrapping is applied in
+        run_historical_validation before any analyze_* call.
+        """
+        from strategy.compact_analyst_payloads import (
+            CompactPayloadLimits,
+        )
+        client = _StubLLMClient()
+        config = _make_config(tmp_path)
+        run_historical_validation(
+            config,
+            llm_client=client,
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        limits = CompactPayloadLimits()
+        # Every analyst call must have gone through a compact
+        # payload — no prompt may exceed the configured ceiling
+        # (with a small overshoot for the fixed system-prompt
+        # scaffolding).
+        assert len(client.calls) == 3
+        for call in client.calls:
+            prompt_size = len(call["prompt"])
+            assert prompt_size < limits.max_prompt_chars + 5_000, (
+                f"prompt size {prompt_size} exceeded compact ceiling "
+                f"{limits.max_prompt_chars} + 5k scaffolding budget"
+            )
+
+    def test_full_artifacts_still_written(self, tmp_path):
+        """The compact wrapper only touches the LLM prompt payload —
+        the full comparison / walk_forward / learning artifacts must
+        still land on disk unchanged.
+        """
+        client = _StubLLMClient()
+        config = _make_config(tmp_path)
+        bundle = run_historical_validation(
+            config,
+            llm_client=client,
+            generated_at="2026-07-03T12:00:00+00:00",
+        )
+        # Comparison + walk_forward + learning report files all
+        # present, and they contain the FULL disagreement / finding
+        # lists (not the compacted view).
+        assert Path(bundle.comparison_report_paths.markdown_path).is_file()
+        assert Path(bundle.walk_forward_report_paths.markdown_path).is_file()
+        assert Path(bundle.learning_report_paths.markdown_path).is_file()
+        # Comparison to_dict on the actual object still yields the
+        # full payload (not compacted).
+        full_dict = bundle.comparison.to_dict()
+        assert "disagreements" in full_dict
+        assert "score_tables" in full_dict
+
 
 # ---------------------------------------------------------------------------
 # Live fetch pathway (mocked)

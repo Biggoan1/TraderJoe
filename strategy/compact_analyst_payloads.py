@@ -389,10 +389,23 @@ class CompactAnalystSource:
         return getattr(self._source, name)
 
     def _base_payload(self) -> Dict[str, Any]:
+        # Prefer to_analyst_payload, then to_dict, then .payload —
+        # LearningReport carries its data on a bare .payload attribute
+        # rather than a serialisation method.
         payload_fn = getattr(self._source, "to_analyst_payload", None)
         if callable(payload_fn):
             return payload_fn()
-        return self._source.to_dict()
+        payload_fn = getattr(self._source, "to_dict", None)
+        if callable(payload_fn):
+            return payload_fn()
+        payload = getattr(self._source, "payload", None)
+        if payload is not None:
+            return dict(payload)
+        raise AttributeError(
+            f"CompactAnalystSource: wrapped source "
+            f"{type(self._source).__name__} has no to_analyst_payload, "
+            f"to_dict, or payload attribute"
+        )
 
     def to_analyst_payload(self) -> Dict[str, Any]:
         full = self._base_payload()

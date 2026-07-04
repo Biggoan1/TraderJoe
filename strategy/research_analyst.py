@@ -1075,11 +1075,23 @@ class ResearchAnalyst:
         explicit_model: Optional[str] = None,
         generated_at: Optional[str] = None,
     ) -> LLMNarrative:
+        # Prefer to_analyst_payload / to_dict when the wrapper
+        # provides them (e.g. CompactAnalystSource); fall back to
+        # the report's raw payload for older shapes.
+        payload_fn = getattr(report, "to_analyst_payload", None)
+        if callable(payload_fn):
+            source_payload = payload_fn()
+        else:
+            payload_fn = getattr(report, "to_dict", None)
+            if callable(payload_fn):
+                source_payload = payload_fn()
+            else:
+                source_payload = report.payload
         return self.analyze(
             source_kind=KIND_LEARNING,
             source_id=report.report_id,
             source_hash=report.stable_hash(),
-            source_payload=report.payload,
+            source_payload=source_payload,
             explicit_model=explicit_model,
             generated_at=generated_at,
         )

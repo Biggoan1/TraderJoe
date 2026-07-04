@@ -1001,6 +1001,10 @@ def run_historical_validation(
     analyst_narratives: List[LLMNarrative] = []
     analyst_reports: List[ResearchAnalystReport] = []
     if llm_client is not None:
+        from strategy.compact_analyst_payloads import (
+            CompactAnalystSource,
+            CompactPayloadLimits,
+        )
         from strategy.research_analyst import ResearchAnalyst
 
         analyst = ResearchAnalyst(llm_client)
@@ -1013,15 +1017,42 @@ def run_historical_validation(
         walk_forward_for_analyst = _with_provenance(
             walk_forward_report, dataset_provenance
         )
+        # Wrap in CompactAnalystSource so the LLM prompt stays under
+        # the model's context window even for large windows.  Full
+        # artifacts are already on disk (comparison_report / walk_forward
+        # /  learning_report were written above); only the LLM prompt
+        # is compacted.
+        limits = CompactPayloadLimits()
+        compact_comparison = CompactAnalystSource(
+            comparison_for_analyst,
+            kind="comparison",
+            artifact_id=comparison_report.report_id,
+            artifact_path=str(comparison_report_paths.output_dir),
+            limits=limits,
+        )
+        compact_walk_forward = CompactAnalystSource(
+            walk_forward_for_analyst,
+            kind="walk_forward",
+            artifact_id=walk_forward_research_report.report_id,
+            artifact_path=str(walk_forward_report_paths.output_dir),
+            limits=limits,
+        )
+        compact_learning = CompactAnalystSource(
+            learning_report,
+            kind="learning",
+            artifact_id=learning_report.report_id,
+            artifact_path=str(learning_report_paths.output_dir),
+            limits=limits,
+        )
         analyst_narratives = [
             analyst.analyze_comparison(
-                comparison_for_analyst, generated_at=generated
+                compact_comparison, generated_at=generated
             ),
             analyst.analyze_walk_forward(
-                walk_forward_for_analyst, generated_at=generated
+                compact_walk_forward, generated_at=generated
             ),
             analyst.analyze_learning_report(
-                learning_report, generated_at=generated
+                compact_learning, generated_at=generated
             ),
         ]
         analyst_reports = [
