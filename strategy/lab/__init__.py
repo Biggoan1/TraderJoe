@@ -51,15 +51,23 @@ from strategy.lab.hypothesis_queue import (
     ExperimentProposal,
     HypothesisQueue,
 )
+from strategy.lab.performance_metrics import (
+    HoldingPeriod,
+    PerformanceMetrics,
+    build_equity_curve,
+    compute_performance_metrics,
+)
 
 __all__ = [
     "ExperimentBundle",
     "ExperimentManifest",
     "ExperimentProposal",
+    "HoldingPeriod",
     "HypothesisQueue",
     "Leaderboard",
     "LeaderboardEntry",
     "ParameterGrid",
+    "PerformanceMetrics",
     "RegistryConflictError",
     "Strategy",
     "StrategyIdentity",
@@ -68,6 +76,8 @@ __all__ = [
     "StrategyRegistry",
     "SweepManifest",
     "SweepRow",
+    "build_equity_curve",
+    "compute_performance_metrics",
     "compute_score_metrics",
     "discover_strategies",
     "entry_from_bundle",
