@@ -33,19 +33,33 @@ from strategy.lab.registry import (
     get_default_registry,
     register,
 )
+from strategy.lab.leaderboard import (
+    Leaderboard,
+    LeaderboardEntry,
+    compute_score_metrics,
+    entry_from_bundle,
+    rank_leaderboard,
+    write_leaderboard,
+)
 
 __all__ = [
     "ExperimentBundle",
     "ExperimentManifest",
+    "Leaderboard",
+    "LeaderboardEntry",
     "RegistryConflictError",
     "Strategy",
     "StrategyIdentity",
     "StrategyNotFoundError",
     "StrategyRegistration",
     "StrategyRegistry",
+    "compute_score_metrics",
     "discover_strategies",
+    "entry_from_bundle",
     "get_default_registry",
+    "rank_leaderboard",
     "register",
     "run_strategy_experiment",
     "stable_parameter_hash",
+    "write_leaderboard",
 ]
