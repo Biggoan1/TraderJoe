@@ -47,10 +47,16 @@ from strategy.lab.parameter_sweep import (
     SweepRow,
     run_parameter_sweep,
 )
+from strategy.lab.hypothesis_queue import (
+    ExperimentProposal,
+    HypothesisQueue,
+)
 
 __all__ = [
     "ExperimentBundle",
     "ExperimentManifest",
+    "ExperimentProposal",
+    "HypothesisQueue",
     "Leaderboard",
     "LeaderboardEntry",
     "ParameterGrid",
