@@ -1602,8 +1602,14 @@ reversible, read-only:
   `ResearchAccountClient.fetch_bars` is provably not called on
   a complete cache hit; dataset provenance threads through the
   bundle, analyst payload, and `PromotionEntry.evidence`.
-  **In Review** (`t_b4b798af`;
-  `strategy/historical_validation.py`; +13 tests).
+  **Done** (`t_b4b798af`;
+  `strategy/historical_validation.py`; +13 tests; commit `81d0a9a`).
+
+**Phase 5.6 status: complete.**  Tagged `v0.30.0-phase5.6`.
+Test suite: 1811 passing.  Only operator-side work remains
+before the first offline warehouse-backed 60-day replay
+(populate the warehouse with real bars via ``import_bars``
+against the Research Alpaca account).
 
 Full dependency matrix, per-card definition of done, validation
 criteria, and out-of-scope carve-outs are in the design doc.

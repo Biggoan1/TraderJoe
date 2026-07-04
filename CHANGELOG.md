@@ -4,11 +4,34 @@ Trader Joe release history.
 
 ---
 
+## v0.30.0-phase5.6 — Phase 5.6 complete
+
+**Date:** 2026-07-04
+**Branch:** sprint-3/daily-digest
+**Status:** Complete
+**Tag:** `v0.30.0-phase5.6`
+
+Phase 5.6 (Historical Data Warehouse) is code-complete.  All 12
+implementation cards plus the bridge card that wires the
+warehouse into ``HistoricalValidation`` are Done.  The warehouse
+is the authoritative research surface: provider-independent,
+immutable, versioned, gap-detectable, and offline-capable.
+``ResearchAccountClient.fetch_bars`` is provably not called when
+local warehouse coverage is complete.
+
+Test suite: **1811 passing.**
+
+Remaining work before the first live warehouse-backed 60-day
+replay is operator-side only (populate the warehouse with real
+bars via ``import_bars`` against the Research Alpaca account).
+
+---
+
 ## Unreleased — Phase 5.6: HistoricalValidation warehouse wiring
 
 **Date:** 2026-07-04
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase56_historical_validation_wiring` (`t_b4b798af`)
 
 ### Added
