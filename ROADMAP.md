@@ -1575,6 +1575,8 @@ reversible, read-only:
   Parquet + SQLite metadata. **Done** (`t_e9626fc3`;
   `strategy/warehouse/duckdb_query.py`; +26 tests).
 - `t_phase56_data_versioning` — version chain with lineage.
+  **Done** (`t_c32b8416`; `strategy/warehouse/versioning.py`;
+  +26 tests).
 - `t_phase56_validation` — integrity validator + `GapReport`
   producer.
 - `t_phase56_gap_detection` — scanner + artifact writer.

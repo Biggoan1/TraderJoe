@@ -4,6 +4,63 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Dataset versioning + lineage
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Done
+**Card:** `t_phase56_data_versioning` (`t_c32b8416`)
+
+### Added
+- `strategy/warehouse/versioning.py` — lineage traversal +
+  version-diff reports over the `parent_dataset_id` /
+  `corporate_action_version` / `adjustment_version` fields the
+  catalog already carries.
+- `VersionNode`, `BarDiff`, `VersionDiff` — frozen dataclasses
+  for the result surface.
+- `version_chain(catalog, dataset_id)` — deterministic ordering
+  (root first, then numeric ascending on
+  `corporate_action_version`).
+- `latest_version(catalog, dataset_id)` — most recent version
+  in the chain.
+- `parent_manifest(catalog, dataset_id)` — parent manifest or
+  `None` for roots.
+- `derive_next_version(parent_manifest, revision_source="",
+  adjustment_version="", corporate_action_version="")` — pure
+  manifest builder: increments the version, points
+  `parent_dataset_id` at the parent, resets
+  `validation_status` to `unvalidated`, clears `files` for the
+  caller to attach.  **Never mutates the parent manifest.**
+- `compare_versions(layout, catalog, parent_dataset_id,
+  child_dataset_id)` — reads both sides' Parquet files,
+  classifies row differences as `added` / `removed` /
+  `changed`, and returns a deterministic `VersionDiff`.
+- `refuse_if_validated(layout, dataset_id)` — guardrail every
+  in-place mutation call must pass through.
+- `VersioningError` — subclass of `WarehouseIntegrityError`.
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports; no order-path tokens; no credential
+  env-var reads; no `ApprovalRecord` / `PromotionEntry`
+  construction.  `FeatureFlags.all_disabled == True` after
+  chain / latest / diff calls.
+- `derive_next_version` never mutates the parent manifest.
+
+### Testing
+- +26 tests in `tests/test_warehouse_versioning.py`.  Full
+  suite: **1743 passing** (was 1717; +26 net new).
+- Coverage: lineage traversal (chain, latest, parent + missing
+  cases), derive_next_version (root → v2, v2 → v3, explicit
+  corporate_action_version, provider field carryover, notes
+  from revision_source, immutability of parent),
+  compare_versions (changed / added / removed classification,
+  no-diff, deterministic ordering, interval-mismatch reject,
+  missing-dataset reject), refuse_if_validated for validated /
+  unvalidated / missing datasets, source safety, feature-flag
+  invariance.
+
+---
+
 ## Unreleased — Phase 5.6: DuckDB query layer
 
 **Date:** 2026-07-03
