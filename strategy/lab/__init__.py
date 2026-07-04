@@ -65,6 +65,14 @@ from strategy.lab.regime_tagger import (
     regime_conditioned_metrics,
     tag_events,
 )
+from strategy.lab.nl_planner import (
+    KIND_REGIME_ANALYSIS,
+    KIND_RS_WEIGHT_SWEEP,
+    KIND_STRATEGY_COMPARISON,
+    KIND_UNRECOGNISED,
+    ResearchPlan,
+    plan_from_question,
+)
 
 __all__ = [
     "ExperimentBundle",
@@ -72,9 +80,14 @@ __all__ = [
     "ExperimentProposal",
     "HoldingPeriod",
     "HypothesisQueue",
+    "KIND_REGIME_ANALYSIS",
+    "KIND_RS_WEIGHT_SWEEP",
+    "KIND_STRATEGY_COMPARISON",
+    "KIND_UNRECOGNISED",
     "RegimeMetrics",
     "RegimeSpec",
     "RegimeTag",
+    "ResearchPlan",
     "Leaderboard",
     "LeaderboardEntry",
     "ParameterGrid",
@@ -90,6 +103,7 @@ __all__ = [
     "build_equity_curve",
     "compute_performance_metrics",
     "default_regime_specs",
+    "plan_from_question",
     "regime_conditioned_metrics",
     "tag_events",
     "compute_score_metrics",
