@@ -78,8 +78,20 @@ class AlpacaProvider:
 
     name = PROVIDER_NAME
 
-    def __init__(self, client: ResearchAccountClient) -> None:
+    def __init__(
+        self,
+        client: ResearchAccountClient,
+        *,
+        feed: str = "sip",
+    ) -> None:
+        if not feed:
+            raise ValueError("feed must be non-empty (e.g. 'sip', 'iex')")
         self._client = client
+        self._feed = feed
+
+    @property
+    def feed(self) -> str:
+        return self._feed
 
     # ------------------------------------------------------------------
     # Capabilities
@@ -172,6 +184,7 @@ class AlpacaProvider:
                 start=start,
                 end=end,
                 adjustment=alpaca_adjustment,
+                feed=self._feed,
             )
         except ResearchAccountRequestError as exc:
             raise MarketDataRequestError(str(exc)) from exc
@@ -313,8 +326,10 @@ class AlpacaProvider:
         )
 
 
-def factory(client: ResearchAccountClient) -> AlpacaProvider:
-    return AlpacaProvider(client=client)
+def factory(
+    client: ResearchAccountClient, *, feed: str = "sip"
+) -> AlpacaProvider:
+    return AlpacaProvider(client=client, feed=feed)
 
 
 register(PROVIDER_NAME, factory)

@@ -177,6 +177,24 @@ class TestAlpacaProviderBars:
         )
         assert client.fetch_bars_calls[0]["adjustment"] == "all"
 
+    def test_default_feed_is_sip(self):
+        client = _StubAlpacaClient(_bars_payload())
+        prov = alpaca_module.AlpacaProvider(client=client)
+        assert prov.feed == "sip"
+        prov.fetch_daily_bars(["AAPL"], "2020-05-01", "2020-05-31")
+        assert client.fetch_bars_calls[0]["feed"] == "sip"
+
+    def test_custom_feed_threaded_through(self):
+        client = _StubAlpacaClient(_bars_payload())
+        prov = alpaca_module.AlpacaProvider(client=client, feed="iex")
+        prov.fetch_daily_bars(["AAPL"], "2020-05-01", "2020-05-31")
+        assert client.fetch_bars_calls[0]["feed"] == "iex"
+
+    def test_empty_feed_rejected(self):
+        client = _StubAlpacaClient(_bars_payload())
+        with pytest.raises(ValueError, match="feed"):
+            alpaca_module.AlpacaProvider(client=client, feed="")
+
     def test_intraday_rejects_daily_interval(self):
         client = _StubAlpacaClient(_bars_payload())
         prov = alpaca_module.AlpacaProvider(client=client)

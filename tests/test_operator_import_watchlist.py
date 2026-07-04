@@ -187,6 +187,79 @@ class TestHappyPath:
         assert manifest["validation_status"] == "unvalidated"
 
 
+class TestFeedFlag:
+    def test_default_feed_is_sip(self):
+        parser = build_parser()
+        args = parser.parse_args(["--symbols", "AAPL"])
+        assert args.feed == "sip"
+
+    def test_custom_feed_accepted(self):
+        parser = build_parser()
+        args = parser.parse_args(["--symbols", "AAPL", "--feed", "iex"])
+        assert args.feed == "iex"
+
+
+class TestSkipIfValidated:
+    def test_second_run_skips_when_validated(self, tmp_path):
+        layout = WarehouseLayout(root=tmp_path / "wh")
+        parser = build_parser()
+        args = parser.parse_args(
+            ["--symbols", "AAPL",
+             "--start", "2020-05-01", "--end", "2020-05-03"]
+        )
+        # First run — imports + validates
+        provider_a = StubProvider()
+        run(args, env=dict(VALID_ENV), provider=provider_a,
+            layout=layout, printer=lambda *a, **k: None)
+        assert len(provider_a.calls) == 1
+
+        # Second run — should skip (provider MUST NOT be called)
+        provider_b = StubProvider()
+        result = run(args, env=dict(VALID_ENV), provider=provider_b,
+                     layout=layout, printer=lambda *a, **k: None)
+        assert result is None
+        assert len(provider_b.calls) == 0
+
+    def test_force_bypasses_skip(self, tmp_path):
+        layout = WarehouseLayout(root=tmp_path / "wh")
+        parser = build_parser()
+        args_first = parser.parse_args(
+            ["--symbols", "AAPL",
+             "--start", "2020-05-01", "--end", "2020-05-03"]
+        )
+        provider_a = StubProvider()
+        run(args_first, env=dict(VALID_ENV), provider=provider_a,
+            layout=layout, printer=lambda *a, **k: None)
+
+        args_force = parser.parse_args(
+            ["--symbols", "AAPL",
+             "--start", "2020-05-01", "--end", "2020-05-03",
+             "--force"]
+        )
+        provider_b = StubProvider()
+        report = run(args_force, env=dict(VALID_ENV), provider=provider_b,
+                     layout=layout, printer=lambda *a, **k: None)
+        assert report is not None
+        assert len(provider_b.calls) == 1
+
+    def test_skip_log_output(self, tmp_path):
+        layout = WarehouseLayout(root=tmp_path / "wh")
+        parser = build_parser()
+        args = parser.parse_args(
+            ["--symbols", "AAPL",
+             "--start", "2020-05-01", "--end", "2020-05-03"]
+        )
+        run(args, env=dict(VALID_ENV), provider=StubProvider(),
+            layout=layout, printer=lambda *a, **k: None)
+
+        printed: List[str] = []
+        run(args, env=dict(VALID_ENV), provider=StubProvider(),
+            layout=layout, printer=printed.append)
+        haystack = "\n".join(printed)
+        assert "already validated" in haystack
+        assert "--force" in haystack
+
+
 # ---------------------------------------------------------------------------
 # Env-var handling
 # ---------------------------------------------------------------------------

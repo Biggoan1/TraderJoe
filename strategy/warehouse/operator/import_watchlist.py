@@ -123,10 +123,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="force overwrite of an existing validated manifest",
     )
+    parser.add_argument(
+        "--feed",
+        default="sip",
+        help="Alpaca data feed (sip=consolidated, iex=IEX-only); default: %(default)s",
+    )
     return parser
 
 
-def _make_provider(env: Dict[str, str]) -> Any:
+def _make_provider(env: Dict[str, str], feed: str = "sip") -> Any:
     """Build an ``AlpacaProvider`` from the research env namespace.
 
     Imported lazily so `--help` works without live credentials.
@@ -139,7 +144,7 @@ def _make_provider(env: Dict[str, str]) -> Any:
 
     config = ResearchAccountConfig.from_env(env)
     client = ResearchAccountClient(config=config, env=env)
-    return AlpacaProvider(client=client)
+    return AlpacaProvider(client=client, feed=feed)
 
 
 def run(
@@ -193,8 +198,28 @@ def run(
         layout = WarehouseLayout.from_env(env)
     layout.create()
 
+    # Skip-if-validated: when the manifest already exists at status
+    # `validated` and --force is not set, refuse to re-import.  This
+    # makes the operator command idempotent on rerun.
+    if not args.force:
+        try:
+            existing = read_manifest(layout, dataset_id)
+        except Exception:
+            existing = None
+        if existing and existing.get("validation_status") == "validated":
+            printer(
+                f"=== dataset {dataset_id!r} already validated — skipping ==="
+            )
+            printer(f"  status: {existing['validation_status']}")
+            printer(f"  symbols: {existing.get('symbols', [])}")
+            printer(f"  window:  {existing.get('start_date')} .. "
+                    f"{existing.get('end_date')}")
+            printer(f"  files:   {len(existing.get('files', []))}")
+            printer(f"  pass --force to re-import.")
+            return None  # type: ignore[return-value]
+
     if provider is None:
-        provider = _make_provider(env)
+        provider = _make_provider(env, feed=getattr(args, "feed", "sip"))
 
     redacted = _redacted_env_dump(env)
     printer("=== research-import-watchlist ===")
@@ -205,6 +230,7 @@ def run(
     printer(f"symbols: {symbols}")
     printer(f"window: {start} .. {end}")
     printer(f"interval: {DEFAULT_INTERVAL.value}")
+    printer(f"feed: {getattr(args, 'feed', 'sip')}")
     printer(f"dataset_id: {dataset_id}")
     printer(f"chunk_size: {args.chunk_size}")
 
