@@ -10,6 +10,7 @@ Trader Joe release history.
 **Branch:** sprint-3/daily-digest
 **Status:** Done
 **Card:** `t_phase56_gap_detection` (`t_b06ec41d`)
+**Commit:** `1969df3`
 
 ### Added
 - `strategy/warehouse/gap_detection.py` — coverage-gap
