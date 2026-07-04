@@ -4,6 +4,74 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: HistoricalValidation warehouse wiring
+
+**Date:** 2026-07-04
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase56_historical_validation_wiring` (`t_b4b798af`)
+
+### Added
+- `strategy/historical_validation.run_historical_validation`
+  gains a new keyword arg ``warehouse_reader``.  When supplied,
+  the pipeline consults the warehouse first via
+  ``WarehouseReader.has_complete_coverage`` — if coverage is
+  complete for the requested symbols + window, warehouse bars
+  are used and ``ResearchAccountClient.fetch_bars`` is NOT
+  called.  When coverage is incomplete, the pipeline falls
+  through to ``research_client`` (or raises
+  ``LiveFetchNotAvailableError`` when neither source is
+  supplied).
+- ``HistoricalValidationBundle.dataset_provenance`` field —
+  records ``{"source": "warehouse"|"provider", "provider_name":
+  "...", "datasets": [{"dataset_id", "version"}, ...]}``.
+  Empty on pure fixture runs.  Serialized in ``to_dict``.
+- ``PromotionEntry.evidence`` gains a
+  ``dataset_provenance_id`` key summarising the source + per-
+  dataset id/version tags.
+- Analyst payload for the comparison and walk-forward
+  narratives now includes ``dataset_provenance`` via a small
+  ``_ProvenanceAnalystShim`` wrapper that injects the block
+  into whatever ``to_analyst_payload`` / ``to_dict`` returns.
+  ``research_analyst.py`` unchanged; the analyst sees the same
+  ``source_id`` / ``source_hash`` it did before.
+
+### Read-only guarantees (enforced by tests)
+- ``PromotionEntry.current_state == STATE_DISABLED`` after
+  every warehouse-backed run.
+- No ``ApprovalRecord`` construction.
+- ``FeatureFlags.all_disabled == True`` after every run.
+- ``trader.py`` / ``crypto_trader.py`` / ``strategy/runner.py``
+  bytes byte-identical.
+
+### Testing
+- +13 new tests in
+  ``tests/test_historical_validation_warehouse_wiring.py``.
+  Full suite: **1811 passing** (was 1798; +13 net new).
+- Load-bearing regressions:
+  * ``test_provider_not_called_when_warehouse_has_full_coverage``
+    — proves ``ResearchAccountClient.fetch_bars`` (via a
+    ``TrackingResearchClient`` call-counter stub with the exact
+    same shape) is NOT called when warehouse coverage is
+    complete.
+  * ``test_provider_called_when_warehouse_empty`` — proves
+    fall-through to the provider when coverage is incomplete.
+  * ``test_pipeline_completes_without_research_client_when_warehouse_covers``
+    — offline path.
+  * ``test_two_warehouse_backed_runs_produce_identical_comparison_hash``
+    — byte-identical replay from warehouse data.
+  * ``test_promotion_evidence_carries_dataset_provenance_id``
+    — provenance reaches ``PromotionEntry.evidence``.
+  * ``test_shim_injects_dataset_provenance`` — analyst payload
+    carries dataset_provenance.
+- All 59 existing ``tests/test_historical_validation.py`` tests
+  still pass (no behavior change on the fixture / provider-only
+  path).
+
+**Commit:** `implementation-pending`
+
+---
+
 ## Unreleased — Phase 5.6: Research cache + provider priority
 
 **Date:** 2026-07-03

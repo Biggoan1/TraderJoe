@@ -211,7 +211,14 @@ class HistoricalValidationConfig:
 
 @dataclass
 class HistoricalValidationBundle:
-    """Result of a single :func:`run_historical_validation` invocation."""
+    """Result of a single :func:`run_historical_validation` invocation.
+
+    ``dataset_provenance`` records where the bars came from —
+    ``source`` is one of ``"warehouse"``, ``"provider"``,
+    ``"fixture"``, and (when applicable) the dataset ids + versions
+    the warehouse read.  The block is empty when no bars were
+    fetched (pure fixture path).
+    """
 
     config: HistoricalValidationConfig
     dataset_manifest_path: str
@@ -231,6 +238,7 @@ class HistoricalValidationBundle:
     warnings: List[str]
     live_fetch_used: bool
     generated_at: str
+    dataset_provenance: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -248,6 +256,7 @@ class HistoricalValidationBundle:
             "warnings": list(self.warnings),
             "live_fetch_used": self.live_fetch_used,
             "generated_at": self.generated_at,
+            "dataset_provenance": dict(self.dataset_provenance),
         }
 
 
@@ -401,6 +410,56 @@ def _run_walk_forward(
     )
 
 
+class _ProvenanceAnalystShim:
+    """Analyst-payload wrapper that injects a ``dataset_provenance``
+    block into whatever ``to_analyst_payload`` or ``to_dict``
+    returns.
+
+    Delegates every other attribute (``metadata``, ``report_id``,
+    ``stable_hash``, …) to the wrapped source, so
+    :meth:`ResearchAnalyst.analyze_comparison` and
+    :meth:`ResearchAnalyst.analyze_walk_forward` see the same
+    ``source_id`` / ``source_hash`` they would from the unwrapped
+    object.  The shim is a research-only construct — nothing else
+    in the pipeline sees it.
+    """
+
+    def __init__(self, source: Any, provenance: Mapping[str, Any]) -> None:
+        self._source = source
+        self._provenance = dict(provenance)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._source, name)
+
+    def to_analyst_payload(self) -> Dict[str, Any]:
+        # Prefer the source's trimmed payload; fall back to
+        # to_dict for legacy comparison shapes.
+        payload_fn = getattr(self._source, "to_analyst_payload", None)
+        base = payload_fn() if callable(payload_fn) else self._source.to_dict()
+        if self._provenance:
+            base = dict(base)
+            base["dataset_provenance"] = dict(self._provenance)
+        return base
+
+    def to_dict(self) -> Dict[str, Any]:
+        base = self._source.to_dict()
+        if self._provenance:
+            base = dict(base)
+            base["dataset_provenance"] = dict(self._provenance)
+        return base
+
+
+def _with_provenance(
+    source: Any, provenance: Mapping[str, Any]
+) -> Any:
+    """Wrap ``source`` in a :class:`_ProvenanceAnalystShim` when
+    ``provenance`` is non-empty, else return the source unchanged.
+    """
+    if not provenance:
+        return source
+    return _ProvenanceAnalystShim(source, provenance)
+
+
 def _build_explanation_summary(
     comparison: ChampionChallengerComparison,
 ) -> Dict[str, Any]:
@@ -449,6 +508,7 @@ def _build_promotion_entry(
     walk_forward_report: WalkForwardReport,
     learning_report: LearningReport,
     analyst_reports: Sequence[ResearchAnalystReport],
+    dataset_provenance: Optional[Mapping[str, Any]] = None,
 ) -> PromotionEntry:
     """Attach evidence keys to a PromotionEntry — never advances state."""
     evidence: Dict[str, str] = {
@@ -460,6 +520,26 @@ def _build_promotion_entry(
     }
     for index, report in enumerate(analyst_reports):
         evidence[f"analyst_report_{index}"] = report.report_id
+    # Phase 5.6 warehouse wiring: record dataset provenance so a
+    # future rerun can pin to the same warehouse dataset ids +
+    # versions.  ``dataset_provenance_id`` is a compact
+    # ``source:dataset_id@version`` string; the full block lives
+    # in the bundle.
+    if dataset_provenance:
+        source = str(dataset_provenance.get("source") or "")
+        provenance_datasets = dataset_provenance.get("datasets") or []
+        if source and provenance_datasets:
+            parts = []
+            for entry in provenance_datasets:
+                if isinstance(entry, Mapping):
+                    ds = entry.get("dataset_id", "")
+                    ver = entry.get("version", "")
+                    if ds:
+                        parts.append(f"{ds}@{ver}" if ver else ds)
+            if parts:
+                evidence["dataset_provenance_id"] = f"{source}:{','.join(parts)}"
+        elif source:
+            evidence["dataset_provenance_id"] = source
     entry = PromotionEntry(
         flag_name=config.flag_name,
         current_state=STATE_DISABLED,
@@ -492,6 +572,190 @@ def _write_analyst_reports(
 # ---------------------------------------------------------------------------
 # Live fetch adapter
 # ---------------------------------------------------------------------------
+
+
+def _fetch_live_events_priority(
+    config: HistoricalValidationConfig,
+    warehouse_reader: Any,
+    research_client: Any,
+    warnings: List[str],
+) -> Tuple[
+    List[BacktestEvent],
+    Dict[str, Dict[str, float]],
+    Dict[str, Dict[str, float]],
+    Dict[str, List[Dict[str, Any]]],
+    Dict[str, Any],
+]:
+    """Priority-ordered live-fetch resolver.
+
+    Consults the warehouse first (when supplied and coverage is
+    complete); falls back to the provider client only when the
+    warehouse can't satisfy the request.  Returns the same
+    (events, champion_scores, rs_map, bars_by_symbol) tuple as
+    :func:`_fetch_live_events`, plus a ``dataset_provenance`` dict
+    describing which source produced the bars.
+
+    Bars_by_symbol lookups from the warehouse are shaped to match
+    the provider payload (``{"t": timestamp, "c": close, ...}``)
+    so downstream :func:`_events_from_bar_dict` sees a homogeneous
+    surface regardless of provenance.
+    """
+    if warehouse_reader is not None:
+        symbols_needed = list(config.symbols) + list(config.benchmarks)
+        try:
+            complete = warehouse_reader.has_complete_coverage(
+                asset_class=_default_asset_class(),
+                interval=_default_interval(),
+                symbols=symbols_needed,
+                start=config.window_start,
+                end=config.window_end,
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"warehouse coverage check failed: {exc}")
+            complete = False
+        if complete:
+            bars_by_symbol, prov = _bars_from_warehouse(
+                config, warehouse_reader, symbols_needed
+            )
+            events, champion_scores, rs_map = _events_from_bar_dict(
+                config, bars_by_symbol
+            )
+            return events, champion_scores, rs_map, bars_by_symbol, prov
+        else:
+            warnings.append(
+                "warehouse coverage incomplete; falling back to provider"
+            )
+
+    if research_client is None:
+        raise LiveFetchNotAvailableError(
+            "config.live_fetch=True and warehouse coverage is incomplete, "
+            "but no research_client was supplied"
+        )
+    events, champion_scores, rs_map, bars_by_symbol = _fetch_live_events(
+        config, research_client
+    )
+    return (
+        events, champion_scores, rs_map, bars_by_symbol,
+        {"source": "provider", "provider_name": "research_client"},
+    )
+
+
+def _default_asset_class():
+    from strategy.market_data_provider import AssetClass
+    return AssetClass.EQUITY
+
+
+def _default_interval():
+    from strategy.market_data_provider import BarInterval
+    return BarInterval.DAILY
+
+
+def _bars_from_warehouse(
+    config: HistoricalValidationConfig,
+    warehouse_reader: Any,
+    symbols_needed: Sequence[str],
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
+    """Fetch bars for every requested symbol via the warehouse
+    reader and shape them into the ``{symbol: [{"t","c",...}]}``
+    payload the downstream pipeline expects.
+
+    Returns the bars dict and a ``dataset_provenance`` block with
+    per-symbol dataset ids + versions the warehouse used.
+    """
+    bars_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+    datasets: List[Dict[str, str]] = []
+    seen_datasets: Dict[str, str] = {}
+    for symbol in symbols_needed:
+        hit = warehouse_reader.fetch_bars(
+            asset_class=_default_asset_class(),
+            interval=_default_interval(),
+            symbols=[symbol],
+            start=config.window_start,
+            end=config.window_end,
+        )
+        symbol_bars: List[Dict[str, Any]] = []
+        for bar in hit.bars:
+            symbol_bars.append(
+                {
+                    "t": bar.timestamp,
+                    "o": float(bar.open),
+                    "h": float(bar.high),
+                    "l": float(bar.low),
+                    "c": float(bar.close),
+                    "v": float(bar.volume),
+                }
+            )
+        bars_by_symbol[symbol] = symbol_bars
+        # Record dataset provenance per (dataset_id, version)
+        for ds_id, ver in zip(
+            (hit.dataset_id or "").split(","),
+            (hit.dataset_version or "").split(","),
+        ):
+            if ds_id and ds_id not in seen_datasets:
+                seen_datasets[ds_id] = ver
+                datasets.append({"dataset_id": ds_id, "version": ver})
+    return bars_by_symbol, {
+        "source": "warehouse",
+        "provider_name": "",
+        "datasets": datasets,
+    }
+
+
+def _events_from_bar_dict(
+    config: HistoricalValidationConfig,
+    bars_by_symbol: Dict[str, List[Dict[str, Any]]],
+) -> Tuple[
+    List[BacktestEvent],
+    Dict[str, Dict[str, float]],
+    Dict[str, Dict[str, float]],
+]:
+    """Extract events + champion score map + RS map from a
+    ``bars_by_symbol`` payload — the shared body between the
+    warehouse and provider paths.
+    """
+    timestamps = sorted(
+        {
+            bar["t"]
+            for symbol_bars in bars_by_symbol.values()
+            if isinstance(symbol_bars, list)
+            for bar in symbol_bars
+            if isinstance(bar, dict) and "t" in bar
+        }
+    )
+    scores_by_timestamp: Dict[str, Dict[str, float]] = {}
+    for symbol in config.symbols:
+        closes = {
+            bar["t"]: float(bar.get("c", 0.0))
+            for bar in bars_by_symbol.get(symbol, [])
+            if isinstance(bar, dict) and "t" in bar
+        }
+        if not closes:
+            continue
+        values = list(closes.values())
+        mean = sum(values) / len(values)
+        for timestamp, close in closes.items():
+            if timestamp not in scores_by_timestamp:
+                scores_by_timestamp[timestamp] = {}
+            scores_by_timestamp[timestamp][symbol] = (
+                (close - mean) / mean if mean else 0.0
+            )
+
+    rs_lookback = min(DEFAULT_RS_LOOKBACK_DAYS, max(1, len(timestamps) - 1))
+    rs_map = build_rs_map_from_bars(
+        bars_by_symbol=bars_by_symbol,
+        symbols=config.symbols,
+        benchmarks=config.benchmarks,
+        lookback_days=rs_lookback,
+    )
+    events = [
+        BacktestEvent(
+            timestamp=timestamp,
+            event_type="market_snapshot",
+            sequence=index + 1,
+        )
+        for index, timestamp in enumerate(timestamps)
+    ]
+    return events, scores_by_timestamp, rs_map
 
 
 def _fetch_live_events(
@@ -586,35 +850,50 @@ def run_historical_validation(
     *,
     research_client: Any = None,
     llm_client: Any = None,
+    warehouse_reader: Any = None,
     generated_at: Optional[str] = None,
 ) -> HistoricalValidationBundle:
     """Run the full two-month historical validation pipeline.
 
     Fixture mode (default): uses ``config.fixture_events`` +
     ``config.fixture_champion_scores`` + ``config.fixture_rs_map``.
-    Live mode (opt-in): pass ``config.live_fetch=True`` AND a
-    ``research_client`` — the orchestrator calls
-    ``research_client.fetch_bars(...)`` for the configured window and
-    builds events + a deterministic Champion score map from the
-    returned bars.
+
+    Live mode (opt-in): pass ``config.live_fetch=True``.  The
+    orchestrator resolves bars in priority order:
+
+    1. ``warehouse_reader`` if supplied and it reports complete
+       coverage for the requested symbols + window.  This is the
+       Phase 5.6 bridge — the warehouse is authoritative when
+       populated.  ``research_client.fetch_bars`` is NOT called.
+    2. ``research_client.fetch_bars(...)`` when the warehouse has
+       incomplete (or no) coverage and a client is supplied.
+
+    Callers passing neither ``warehouse_reader`` nor
+    ``research_client`` alongside ``live_fetch=True`` still hit
+    :class:`LiveFetchNotAvailableError` — the orchestrator refuses
+    to silently fall through to fixture mode.
 
     The orchestrator never constructs an
     :class:`~strategy.promotion_gates.ApprovalRecord`.  The returned
     :class:`PromotionEntry` sits at ``current_state = "disabled"``.
     """
-    if config.live_fetch and research_client is None:
+    if config.live_fetch and research_client is None and warehouse_reader is None:
         raise LiveFetchNotAvailableError(
-            "config.live_fetch=True but no research_client was supplied; "
-            "the orchestrator will not silently fall through to fixture mode"
+            "config.live_fetch=True but neither research_client nor "
+            "warehouse_reader was supplied; the orchestrator will not "
+            "silently fall through to fixture mode"
         )
 
     generated = generated_at or _utc_now_iso()
     warnings: List[str] = []
+    dataset_provenance: Dict[str, Any] = {}
 
     bars_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
     if config.live_fetch:
-        events, champion_scores, rs_map, bars_by_symbol = _fetch_live_events(
-            config, research_client
+        events, champion_scores, rs_map, bars_by_symbol, dataset_provenance = (
+            _fetch_live_events_priority(
+                config, warehouse_reader, research_client, warnings
+            )
         )
         live_fetch_used = True
         # Persist a fixture-style events snapshot so downstream reruns
@@ -715,10 +994,21 @@ def run_historical_validation(
         from strategy.research_analyst import ResearchAnalyst
 
         analyst = ResearchAnalyst(llm_client)
+        # Wrap comparison + walk-forward in provenance-aware shims
+        # so the analyst payload carries dataset_provenance without
+        # requiring a research_analyst.py change.
+        comparison_for_analyst = _with_provenance(
+            comparison, dataset_provenance
+        )
+        walk_forward_for_analyst = _with_provenance(
+            walk_forward_report, dataset_provenance
+        )
         analyst_narratives = [
-            analyst.analyze_comparison(comparison, generated_at=generated),
+            analyst.analyze_comparison(
+                comparison_for_analyst, generated_at=generated
+            ),
             analyst.analyze_walk_forward(
-                walk_forward_report, generated_at=generated
+                walk_forward_for_analyst, generated_at=generated
             ),
             analyst.analyze_learning_report(
                 learning_report, generated_at=generated
@@ -744,6 +1034,7 @@ def run_historical_validation(
         walk_forward_report=walk_forward_report,
         learning_report=learning_report,
         analyst_reports=analyst_reports,
+        dataset_provenance=dataset_provenance,
     )
 
     # Belt-and-suspenders: refuse to return a bundle with a
@@ -776,4 +1067,5 @@ def run_historical_validation(
         warnings=warnings,
         live_fetch_used=live_fetch_used,
         generated_at=generated,
+        dataset_provenance=dict(dataset_provenance),
     )

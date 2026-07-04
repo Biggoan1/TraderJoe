@@ -1596,6 +1596,14 @@ reversible, read-only:
   provider-priority fallback and version pinning. **Done**
   (`t_e6bf82a9`; `strategy/warehouse/research_cache.py`;
   +19 tests).
+- `t_phase56_historical_validation_wiring` — bridge card:
+  wires `WarehouseReader` into `run_historical_validation` so
+  the warehouse is authoritative when populated;
+  `ResearchAccountClient.fetch_bars` is provably not called on
+  a complete cache hit; dataset provenance threads through the
+  bundle, analyst payload, and `PromotionEntry.evidence`.
+  **In Review** (`t_b4b798af`;
+  `strategy/historical_validation.py`; +13 tests).
 
 Full dependency matrix, per-card definition of done, validation
 criteria, and out-of-scope carve-outs are in the design doc.
