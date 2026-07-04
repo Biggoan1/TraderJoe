@@ -10,6 +10,7 @@ Trader Joe release history.
 **Branch:** sprint-3/daily-digest
 **Status:** Done
 **Card:** `t_phase56_duckdb_queries` (`t_e9626fc3`)
+**Commit:** `f96d086`
 
 ### Added
 - `strategy/warehouse/duckdb_query.py` — analytical read layer.
