@@ -8,8 +8,9 @@ Trader Joe release history.
 
 **Date:** 2026-07-03
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase56_parquet_storage` (`t_6168af8e`)
+**Commit:** `e287c50`
 
 ### Added
 - `strategy/warehouse/` — new subpackage for Phase 5.6 warehouse
