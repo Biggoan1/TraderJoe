@@ -8,8 +8,9 @@ Trader Joe release history.
 
 **Date:** 2026-07-03
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase56_import_pipeline` (`t_31308fc2`)
+**Commit:** `a898d6e`
 
 ### Added
 - `strategy/warehouse/import_pipeline.py` — bulk provider fetch,
