@@ -8,8 +8,10 @@ Trader Joe release history.
 
 **Date:** 2026-07-03
 **Branch:** sprint-3/daily-digest
-**Status:** Review
+**Status:** Done
 **Card:** `t_phase56_catalog` (`t_56f319a9`)
+**Commit:** `0fd96dd`
+**Validation commit:** pending (this update)
 
 ### Added
 - `strategy/data_catalog.py` — extended the existing Phase 3
