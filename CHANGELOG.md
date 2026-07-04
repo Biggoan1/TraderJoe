@@ -10,6 +10,7 @@ Trader Joe release history.
 **Branch:** sprint-3/daily-digest
 **Status:** Done
 **Card:** `t_phase56_validation` (`t_ababb2f7`)
+**Commit:** `7612084`
 
 ### Added
 - `strategy/warehouse/validation.py` — integrity validator +
