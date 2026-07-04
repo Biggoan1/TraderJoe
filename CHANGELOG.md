@@ -68,7 +68,7 @@ Trader Joe release history.
   still pass (no behavior change on the fixture / provider-only
   path).
 
-**Commit:** `implementation-pending`
+**Commit:** `81d0a9a`
 
 ---
 
