@@ -1569,7 +1569,8 @@ reversible, read-only:
 - `t_phase56_catalog` — extension of `strategy/data_catalog.py`.
   **Done** (`t_56f319a9`; +40 tests; commit `0fd96dd`).
 - `t_phase56_parquet_storage` — bar writer/reader in canonical
-  schema, Zstd config.
+  schema, Zstd config. **In Review** (`t_6168af8e`;
+  `strategy/warehouse/parquet_io.py`; +42 tests; commit pending).
 - `t_phase56_duckdb_queries` — DuckDB query layer joining
   Parquet + SQLite metadata.
 - `t_phase56_data_versioning` — version chain with lineage.

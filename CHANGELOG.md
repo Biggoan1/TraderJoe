@@ -4,6 +4,94 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Parquet bar storage
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Review
+**Card:** `t_phase56_parquet_storage` (`t_6168af8e`)
+
+### Added
+- `strategy/warehouse/` — new subpackage for Phase 5.6 warehouse
+  implementation modules.  Reserved for the parquet writer/reader,
+  DuckDB query layer, versioning, validation, and import pipeline.
+- `strategy/warehouse/parquet_io.py` — canonical Parquet bar
+  writer / reader.  Uses `pyarrow`; no DuckDB, no provider
+  plugins, no import pipeline.
+- `CANONICAL_SCHEMA` / `CANONICAL_COLUMNS` — 12-column contract
+  every warehouse-persisted bar row satisfies.  Column order is
+  fixed on read: symbol, timestamp, OHLCV, vwap (nullable),
+  trade_count (nullable), interval, adjustment_mode,
+  adjustment_version.
+- Zstandard (level 3) compression at write time; deterministic
+  file bodies under a fixed pyarrow / libparquet version.
+- Partition strategy per bar interval — daily -> `{yyyy}.parquet`,
+  hourly -> `{yyyy}-{mm}.parquet`, minute/second ->
+  `{yyyy}-{mm}-{dd}.parquet`.  All sub-hourly intervals share the
+  daily partition.
+- `write_bars(layout, bars, asset_class, dataset_id="")` — atomic
+  writer (tempfile + `os.replace`) that sorts by
+  `(symbol, timestamp)` before batching, refuses mixed-interval
+  / mixed-adjustment_mode batches, and returns a list of
+  `WrittenFile` records carrying relative + absolute paths, row
+  count, byte count, and sha256 for the catalog to thread into
+  its manifest.
+- `read_bars(layout, relative_paths)` — schema-validated reader
+  that reconstructs `Bar` instances via
+  `strategy.market_data_provider` and returns them in
+  `(symbol, timestamp)` order.  Refuses files whose on-disk
+  schema does not match `CANONICAL_SCHEMA`.
+- `scan_parquet_files(layout, asset_class, interval, dataset_id,
+  symbol=None)` — deterministic filesystem enumeration under a
+  partition, returning portable relative paths.
+- `ParquetStorageError` — subclass of `WarehouseIntegrityError`
+  for storage-specific violations (mixed intervals, schema
+  mismatch, missing file, malformed timestamp).
+- `WrittenFile` — frozen dataclass returned by `write_bars`;
+  contains everything the catalog / manifest layer needs to
+  register the file.
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports.
+- No order-path token references.
+- No provider plugin imports (`strategy.providers`,
+  `alpaca_trade_api`, `polygon`, `databento`, `tiingo`).
+- No yfinance / pandas.
+- No provider credential env reads.
+- No `ApprovalRecord` / `PromotionEntry` construction.
+- `FeatureFlags.all_disabled == True` after module import,
+  write, read, scan.
+- Terminology: validation / replay / research / acquisition.
+
+### Testing
+- +42 new tests in `tests/test_warehouse_parquet_io.py` under
+  pytest `tmp_path` (no touching of the repo's `market_data/`
+  tree).  Total suite: **1601 passing** (was 1559; +42 net new).
+- Coverage: canonical schema shape + null constraints,
+  write/read roundtrip for daily/hourly/minute/second, per-symbol
+  and per-time-bucket file naming, sha256 / size / row count
+  vs disk, mixed-interval / mixed-adjustment_mode / bad-timestamp
+  rejection, atomic-write leaves no stray temp files, asset-class
+  routing (ETF -> equities/, CRYPTO -> crypto/), `dataset_id=""`
+  fallback, `scan_parquet_files` with and without symbol filter,
+  schema-mismatch refusal on read, warehouse integration via
+  `layout.dataset_dir`, path-traversal rejection through the
+  warehouse guard, feature-flag invariance, source-safety scan.
+
+### Dependencies
+- New dependency: `pyarrow` (24.0.0 installed).  Anticipated in
+  the Phase 5.6 design doc.  Not imported by any live-path
+  module.
+
+### Not in this card (deferred to subsequent Phase 5.6 cards)
+- DuckDB analytical query layer — `t_phase56_duckdb_queries`.
+- Integrity + gap validation on the written files —
+  `t_phase56_validation` / `t_phase56_gap_detection`.
+- Provider plugin implementations — `t_phase56_provider_plugins`.
+- Import pipelines — `t_phase56_import_pipeline`.
+
+---
+
 ## Unreleased — Phase 5.6: Data catalog extension
 
 **Date:** 2026-07-03

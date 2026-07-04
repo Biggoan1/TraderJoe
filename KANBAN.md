@@ -78,7 +78,7 @@ Hermes is not orchestrating this work item. Current repository snapshot:
 | `t_1c8a70da` | Phase 5.6: MarketDataProvider interface (`t_phase56_provider_interface`) | Phase 5.6 | Done |
 | `t_b2a75ee8` | Phase 5.6: Local historical warehouse layout (`t_phase56_local_warehouse`) | Phase 5.6 | Done |
 | `t_56f319a9` | Phase 5.6: Data catalog extension (`t_phase56_catalog`) | Phase 5.6 | Done |
-| `t_6168af8e` | Phase 5.6: Parquet bar storage (`t_phase56_parquet_storage`) | Phase 5.6 | Ready |
+| `t_6168af8e` | Phase 5.6: Parquet bar storage (`t_phase56_parquet_storage`) | Phase 5.6 | Review |
 | `t_e9626fc3` | Phase 5.6: DuckDB query layer (`t_phase56_duckdb_queries`) | Phase 5.6 | Ready |
 | `t_c32b8416` | Phase 5.6: Dataset versioning + lineage (`t_phase56_data_versioning`) | Phase 5.6 | Ready |
 | `t_ababb2f7` | Phase 5.6: Warehouse integrity validation (`t_phase56_validation`) | Phase 5.6 | Ready |
