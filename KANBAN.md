@@ -86,7 +86,7 @@ Hermes is not orchestrating this work item. Current repository snapshot:
 | `t_22210825` | Phase 5.6: Provider plugins (Alpaca + CSV + Parquet) (`t_phase56_provider_plugins`) | Phase 5.6 | Done |
 | `t_31308fc2` | Phase 5.6: Import pipeline (`t_phase56_import_pipeline`) | Phase 5.6 | Done |
 | `t_cf80bf36` | Phase 5.6: Incremental sync runner (`t_phase56_incremental_sync`) | Phase 5.6 | Done |
-| `t_e6bf82a9` | Phase 5.6: Research cache + provider priority (`t_phase56_research_cache`) | Phase 5.6 | Ready |
+| `t_e6bf82a9` | Phase 5.6: Research cache + provider priority (`t_phase56_research_cache`) | Phase 5.6 | Done |
 
 ## Phase 5.6 — Implementation dependency chain
 

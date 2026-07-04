@@ -4,6 +4,75 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Research cache + provider priority
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Done
+**Card:** `t_phase56_research_cache` (`t_e6bf82a9`)
+
+### Added
+- `strategy/warehouse/research_cache.py` — primary read
+  surface with provider priority.  Warehouse first; providers
+  in caller-supplied order second; manual/CSV import third.
+- `WarehouseReader(layout, catalog=None,
+  provider_priority=(), pinned_versions=None)` —
+  context-manager friendly.  Wraps `WarehouseQueryReader`.
+- `WarehouseReader.has_complete_coverage(...)` — determines
+  whether the warehouse can satisfy a request without touching
+  any provider.
+- `WarehouseReader.fetch_bars(asset_class, interval, symbols,
+  start, end, adjustment)` — priority resolution.  Returns a
+  `CacheHit` tagged with `source`, `provider_name`,
+  `dataset_id`, `dataset_version`, `bars`, `warnings`.
+- Pinned-version resolution: `pinned_versions={dataset_id:
+  version_label}` freezes a research run's provenance across
+  reruns even after a newer version lands.
+- `CacheHit` frozen dataclass carrying provenance for
+  downstream analyst payloads.
+- `SOURCE_WAREHOUSE`, `SOURCE_PROVIDER`, `SOURCE_MANUAL`,
+  `KNOWN_SOURCES` constants.
+- `ResearchCacheError` subclass of `WarehouseIntegrityError`.
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports; no order-path tokens; no credential
+  env-var reads; no `ApprovalRecord` / `PromotionEntry`
+  construction.  `FeatureFlags.all_disabled == True` after
+  every fetch.
+
+### Testing
+- +19 tests in `tests/test_warehouse_research_cache.py`.  Full
+  suite: **1798 passing** (was 1779; +19 net new).
+- **Load-bearing regressions per the card's DoD:**
+  * `test_regression_no_provider_call_when_coverage_complete`
+    — proves `ResearchAccountClient.fetch_bars` (via
+    `TrackingProvider.calls` counter) is NOT called when
+    warehouse coverage is complete for the requested
+    symbols × window.
+  * `test_reads_bars_offline_with_no_providers` — proves an
+    end-to-end fetch works with an empty provider list when
+    warehouse coverage exists.
+  * `test_two_reader_instances_return_byte_identical_bars` —
+    proves the warehouse is the source of truth and produces
+    byte-identical Bar dicts across independent
+    `WarehouseReader` instances.
+- Additional coverage: warehouse-first behavior, provider
+  fallback, priority ordering, empty primary falls through to
+  secondary, no-source raises, provider failure surfaces
+  warning + falls through, `has_complete_coverage` positive /
+  symbol-missing / window-outside / empty-symbols cases,
+  pinned version wins over `latest_validated`, source
+  safety, feature-flag invariance.
+
+### Phase 5.6 status
+- **All 12 implementation cards Done.**  Warehouse write path
+  (interface / layout / catalog / Parquet / provider plugins /
+  import pipeline / incremental sync) and read path
+  (DuckDB queries / versioning / integrity validation / gap
+  detection / research cache) both landed.
+
+---
+
 ## Unreleased — Phase 5.6: Gap detection reports
 
 **Date:** 2026-07-03

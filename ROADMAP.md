@@ -1593,7 +1593,9 @@ reversible, read-only:
   **Done** (`t_cf80bf36`;
   `strategy/warehouse/incremental_sync.py`; +20 tests; commit `7b6b62f`).
 - `t_phase56_research_cache` — `WarehouseReader` with
-  provider-priority fallback and version pinning.
+  provider-priority fallback and version pinning. **Done**
+  (`t_e6bf82a9`; `strategy/warehouse/research_cache.py`;
+  +19 tests).
 
 Full dependency matrix, per-card definition of done, validation
 criteria, and out-of-scope carve-outs are in the design doc.
