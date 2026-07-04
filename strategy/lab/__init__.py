@@ -19,9 +19,17 @@ from strategy.lab.strategy import (
     StrategyIdentity,
     stable_parameter_hash,
 )
+from strategy.lab.experiment_runner import (
+    ExperimentBundle,
+    ExperimentManifest,
+    run_strategy_experiment,
+)
 
 __all__ = [
+    "ExperimentBundle",
+    "ExperimentManifest",
     "Strategy",
     "StrategyIdentity",
+    "run_strategy_experiment",
     "stable_parameter_hash",
 ]

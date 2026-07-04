@@ -852,6 +852,7 @@ def run_historical_validation(
     llm_client: Any = None,
     warehouse_reader: Any = None,
     generated_at: Optional[str] = None,
+    challenger_factory: Any = None,
 ) -> HistoricalValidationBundle:
     """Run the full two-month historical validation pipeline.
 
@@ -948,12 +949,21 @@ def run_historical_validation(
     # Locally-scoped FeatureFlags for the challenger — global flags
     # remain disabled throughout.
     local_flags = FeatureFlags(enable_relative_strength=True)
-    challenger = RelativeStrengthChallenger(
-        base_evaluator=champion,
-        rs_provider=rs_provider_from_map(rs_map),
-        flags=local_flags,
-        strategy_id=config.challenger_id,
-    )
+    if challenger_factory is not None:
+        challenger = challenger_factory(
+            champion=champion,
+            bars_by_symbol=bars_by_symbol,
+            symbols=config.symbols,
+            rs_map=rs_map,
+            local_flags=local_flags,
+        )
+    else:
+        challenger = RelativeStrengthChallenger(
+            base_evaluator=champion,
+            rs_provider=rs_provider_from_map(rs_map),
+            flags=local_flags,
+            strategy_id=config.challenger_id,
+        )
 
     comparison = _run_comparison(
         config, champion, challenger, events, generated
