@@ -563,7 +563,11 @@ class TestLiveFetchRsIntegration:
 
     def test_pipeline_produces_disagreements_with_rs_signal(self, tmp_path):
         reset_feature_flags()  # keep the global check clean
-        client = _StubResearchClient(_diverging_bars(days=45))
+        # B02: Champion needs >=51 bars of history to fire gates.
+        # Use 60 bars so Champion produces real (non-rejected)
+        # scores and RS overlay can produce genuine disagreements
+        # instead of phantom ones on rejected symbols.
+        client = _StubResearchClient(_diverging_bars(days=60))
         config = self._config(tmp_path)
         bundle = run_historical_validation(
             config,

@@ -138,6 +138,30 @@ class RelativeStrengthChallenger:
             base_score = base.scores[symbol]
             rs_value = self._safe_fetch(symbol, event, warnings)
             base_exp = base_structured.get(symbol)
+            # B02: Respect the base evaluator's rejection.  If the
+            # base has flagged this symbol as rejected (insufficient
+            # history, failed gate count, etc.), an RS overlay must
+            # not synthesise a non-zero challenger score — that
+            # produces phantom disagreements against a symbol the
+            # base has already opted out of.  We preserve the base
+            # score and explanation exactly and record a skip note.
+            if base_exp is not None and getattr(base_exp, "rejected", False):
+                new_scores[symbol] = base_score
+                explanations[symbol] = base.explanations.get(symbol, "")
+                structured[symbol] = append_overlay_component(
+                    base_exp,
+                    overlay_strategy_id=self.strategy_id,
+                    component_name="rs_overlay",
+                    contribution=0.0,
+                    detail=(
+                        "rs_overlay_skipped_base_rejected — base "
+                        "evaluator rejected this symbol; overlay "
+                        "left the score unchanged"
+                    ),
+                    rs_value=rs_value,
+                    notes=("rs_overlay_skipped_base_rejected",),
+                )
+                continue
             if rs_value is None:
                 new_scores[symbol] = base_score
                 missing.append(symbol)

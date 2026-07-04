@@ -1236,3 +1236,176 @@ class TestRSOverlayPreservesChampionExplanation:
         assert "AAPL" in result.structured_explanations
         exp = result.structured_explanations["AAPL"]
         assert exp.strategy_id == challenger.strategy_id
+
+
+# ---------------------------------------------------------------------------
+# B02: RS overlay must respect base rejection
+# ---------------------------------------------------------------------------
+
+
+def _base_with_rejected(
+    ts: str, symbol: str, rejection_reason: str = "insufficient_history",
+) -> StrategyEvaluation:
+    """Base evaluation where the symbol has been rejected by the
+    base (e.g. Champion's insufficient-history gate).  final_score
+    is 0.0 and rejected=True.
+    """
+    exp = ScoreExplanation(
+        strategy_id="champion-v0.4.0",
+        symbol=symbol,
+        event_timestamp=ts,
+        final_score=0.0,
+        components=(),
+        rejected=True,
+        rejection_reasons=(rejection_reason,),
+    )
+    return StrategyEvaluation(
+        strategy_id="champion-v0.4.0",
+        event_timestamp=ts,
+        scores={symbol: 0.0},
+        rankings=[],
+        explanations={symbol: exp.to_summary_str()},
+        warnings=[],
+        structured_explanations={symbol: exp},
+    )
+
+
+class TestB02RejectedBaseSkipsOverlay:
+    """B02: When the base evaluator has rejected a symbol
+    (rejected=True on the ScoreExplanation), the RS overlay must
+    not modify the score.  Previously the overlay applied its RS
+    contribution to base_score=0.0 regardless of rejection,
+    producing phantom disagreements where the base had explicitly
+    opted out.
+    """
+
+    def _challenger(self, base_eval):
+        base = _StubBase(strategy_id="champion-v0.4.0", evaluation=base_eval)
+        return RelativeStrengthChallenger(
+            base,
+            rs_provider_from_map(
+                {base_eval.event_timestamp: {"AAPL": 90.0}}  # would add +0.16
+            ),
+            flags=FeatureFlags(enable_relative_strength=True),
+        )
+
+    def test_rejected_base_score_preserved(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        base_eval = _base_with_rejected(ts, "AAPL")
+        challenger = self._challenger(base_eval)
+        result = challenger.evaluate(_event(ts))
+        # Score matches base exactly — NO phantom RS contribution
+        assert result.scores["AAPL"] == 0.0
+
+    def test_insufficient_history_produces_zero_score_delta(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        base_eval = _base_with_rejected(ts, "AAPL", "insufficient_history: have=21 need>=51")
+        challenger = self._challenger(base_eval)
+        result = challenger.evaluate(_event(ts))
+        assert result.scores["AAPL"] == 0.0
+        # Structured explanation records the skip
+        exp = result.structured_explanations["AAPL"]
+        rs_component = exp.components[-1]
+        assert rs_component.name == "rs_overlay"
+        assert rs_component.contribution == 0.0
+
+    def test_skip_reason_recorded_in_notes(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        base_eval = _base_with_rejected(ts, "AAPL")
+        challenger = self._challenger(base_eval)
+        result = challenger.evaluate(_event(ts))
+        exp = result.structured_explanations["AAPL"]
+        assert "rs_overlay_skipped_base_rejected" in exp.notes
+
+    def test_skip_detail_visible_in_component(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        base_eval = _base_with_rejected(ts, "AAPL")
+        challenger = self._challenger(base_eval)
+        result = challenger.evaluate(_event(ts))
+        exp = result.structured_explanations["AAPL"]
+        rs_component = exp.components[-1]
+        assert "rs_overlay_skipped_base_rejected" in rs_component.detail
+
+    def test_base_rejection_flag_preserved(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        base_eval = _base_with_rejected(ts, "AAPL")
+        challenger = self._challenger(base_eval)
+        result = challenger.evaluate(_event(ts))
+        exp = result.structured_explanations["AAPL"]
+        # rejected flag flows through unchanged
+        assert exp.rejected is True
+
+    def test_base_explanation_string_preserved(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        base_eval = _base_with_rejected(ts, "AAPL", "insufficient_history: have=21 need>=51")
+        base_summary = base_eval.explanations["AAPL"]
+        challenger = self._challenger(base_eval)
+        result = challenger.evaluate(_event(ts))
+        # Free-text explanation is byte-identical to Champion's
+        assert result.explanations["AAPL"] == base_summary
+
+    def test_non_rejected_base_still_gets_overlay(self):
+        # Baseline case — non-rejected symbol should still receive
+        # the RS overlay contribution.
+        ts = "2026-07-02T14:30:00+00:00"
+        base_eval = _base_with_structured(ts, "AAPL", 0.7)
+        challenger = RelativeStrengthChallenger(
+            _StubBase(strategy_id="champion-v0.4.0", evaluation=base_eval),
+            rs_provider_from_map({ts: {"AAPL": 90.0}}),
+            flags=FeatureFlags(enable_relative_strength=True),
+        )
+        result = challenger.evaluate(_event(ts))
+        # RS at rs=90, neutral=50, range=50, weight=0.2 -> contribution=(90-50)/50*0.2 = 0.16
+        assert result.scores["AAPL"] > 0.7
+        assert result.scores["AAPL"] == pytest.approx(0.86, abs=1e-6)
+
+    def test_mixed_batch_rejected_and_valid_symbols(self):
+        ts = "2026-07-02T14:30:00+00:00"
+        # Two symbols: AAPL rejected, MSFT valid
+        rejected_exp = ScoreExplanation(
+            strategy_id="champion-v0.4.0",
+            symbol="AAPL",
+            event_timestamp=ts,
+            final_score=0.0,
+            rejected=True,
+            rejection_reasons=("insufficient_history",),
+        )
+        valid_exp = ScoreExplanation(
+            strategy_id="champion-v0.4.0",
+            symbol="MSFT",
+            event_timestamp=ts,
+            final_score=0.7,
+            components=(ScoreComponent(name="above_sma20", contribution=1.5),),
+            rejected=False,
+        )
+        raw_base = StrategyEvaluation(
+            strategy_id="champion-v0.4.0",
+            event_timestamp=ts,
+            scores={"AAPL": 0.0, "MSFT": 0.7},
+            rankings=[{"symbol": "MSFT", "rank": 1}],
+            explanations={"AAPL": "rej", "MSFT": "ok"},
+            warnings=[],
+            structured_explanations={"AAPL": rejected_exp, "MSFT": valid_exp},
+        )
+        challenger = RelativeStrengthChallenger(
+            _StubBase(strategy_id="champion-v0.4.0", evaluation=raw_base),
+            rs_provider_from_map({ts: {"AAPL": 90.0, "MSFT": 90.0}}),
+            flags=FeatureFlags(enable_relative_strength=True),
+        )
+        result = challenger.evaluate(_event(ts))
+        # AAPL: rejected -> score preserved
+        assert result.scores["AAPL"] == 0.0
+        # MSFT: valid -> overlay applied
+        assert result.scores["MSFT"] == pytest.approx(0.86, abs=1e-6)
+
+    def test_zero_disagreements_when_all_bases_rejected(self):
+        # Full-pipeline-like assertion: when every symbol at every
+        # event is rejected, the challenger should agree with the
+        # base on every score -> no phantom disagreements.
+        ts = "2026-07-02T14:30:00+00:00"
+        base_eval = _base_with_rejected(ts, "AAPL", "insufficient_history: have=21 need>=51")
+        challenger = self._challenger(base_eval)
+        result = challenger.evaluate(_event(ts))
+        # Score equals base score for every symbol
+        for symbol in base_eval.scores:
+            assert result.scores[symbol] == base_eval.scores[symbol]
