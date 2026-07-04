@@ -81,7 +81,7 @@ Hermes is not orchestrating this work item. Current repository snapshot:
 | `t_6168af8e` | Phase 5.6: Parquet bar storage (`t_phase56_parquet_storage`) | Phase 5.6 | Done |
 | `t_e9626fc3` | Phase 5.6: DuckDB query layer (`t_phase56_duckdb_queries`) | Phase 5.6 | Done |
 | `t_c32b8416` | Phase 5.6: Dataset versioning + lineage (`t_phase56_data_versioning`) | Phase 5.6 | Done |
-| `t_ababb2f7` | Phase 5.6: Warehouse integrity validation (`t_phase56_validation`) | Phase 5.6 | Ready |
+| `t_ababb2f7` | Phase 5.6: Warehouse integrity validation (`t_phase56_validation`) | Phase 5.6 | Done |
 | `t_b06ec41d` | Phase 5.6: Gap detection reports (`t_phase56_gap_detection`) | Phase 5.6 | Ready |
 | `t_22210825` | Phase 5.6: Provider plugins (Alpaca + CSV + Parquet) (`t_phase56_provider_plugins`) | Phase 5.6 | Done |
 | `t_31308fc2` | Phase 5.6: Import pipeline (`t_phase56_import_pipeline`) | Phase 5.6 | Done |

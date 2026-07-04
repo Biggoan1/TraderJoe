@@ -4,6 +4,55 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: Warehouse integrity validation
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Done
+**Card:** `t_phase56_validation` (`t_ababb2f7`)
+
+### Added
+- `strategy/warehouse/validation.py` — integrity validator +
+  report producer + lifecycle transition helper.  Validation
+  checks: manifest existence + schema; per-file existence,
+  sha256, size, row count; Parquet schema matches
+  `CANONICAL_SCHEMA`; OHLCV invariants (l ≤ o,c ≤ h);
+  volume ≥ 0; no NaN; timestamp ISO 8601 prefix; no
+  duplicate (symbol, timestamp) across files.
+- `validate_dataset(layout, dataset_id)` — pure function
+  returning a `ValidationReport`.  Never mutates the manifest.
+- `apply_validation_report(layout, report)` — lifecycle
+  transition: `ok=True → validated`, `ok=False → quarantined`.
+  Explicit — the caller decides whether to apply.
+- `write_report(report, output_dir)` — persists the report as
+  JSON under a filesystem path, with a unique filename per pass
+  so repeated runs on the same dataset don't overwrite each
+  other.
+- `ValidationFinding`, `ValidationReport`, `ValidationError`,
+  severity constants (`SEVERITY_ERROR` / `SEVERITY_WARNING`).
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports; no order-path tokens; no credential
+  env-var reads; no `ApprovalRecord` / `PromotionEntry`
+  construction.  `FeatureFlags.all_disabled == True` after
+  every validation call.  `validate_dataset` never mutates
+  the manifest — mutation happens only through
+  `apply_validation_report`, and only with `force=True` since
+  the caller has explicitly chosen the transition.
+
+### Testing
+- +18 tests in `tests/test_warehouse_validation.py`.  Full
+  suite: **1761 passing** (was 1743; +18 net new).
+- Coverage: clean dataset validates ok; missing file /
+  checksum / size / row_count mismatch; Parquet schema
+  mismatch; negative volume (or unreadable_parquet from the
+  writer's own guard); duplicate bar across files; missing
+  manifest raises; apply_validation_report promotes / quarantines
+  per report.ok; write_report drops JSON and creates output
+  dir; source safety; feature-flag invariance.
+
+---
+
 ## Unreleased — Phase 5.6: Dataset versioning + lineage
 
 **Date:** 2026-07-03

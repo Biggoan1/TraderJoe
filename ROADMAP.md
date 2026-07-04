@@ -1578,7 +1578,8 @@ reversible, read-only:
   **Done** (`t_c32b8416`; `strategy/warehouse/versioning.py`;
   +26 tests).
 - `t_phase56_validation` — integrity validator + `GapReport`
-  producer.
+  producer. **Done** (`t_ababb2f7`;
+  `strategy/warehouse/validation.py`; +18 tests).
 - `t_phase56_gap_detection` — scanner + artifact writer.
 - `t_phase56_provider_plugins` — Alpaca (wraps
   `ResearchAccountClient`), CSV, Parquet plugins. **Done**
