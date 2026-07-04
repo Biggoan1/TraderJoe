@@ -1572,7 +1572,8 @@ reversible, read-only:
   schema, Zstd config. **Done** (`t_6168af8e`;
   `strategy/warehouse/parquet_io.py`; +42 tests; commit `e287c50`).
 - `t_phase56_duckdb_queries` — DuckDB query layer joining
-  Parquet + SQLite metadata.
+  Parquet + SQLite metadata. **Done** (`t_e9626fc3`;
+  `strategy/warehouse/duckdb_query.py`; +26 tests).
 - `t_phase56_data_versioning` — version chain with lineage.
 - `t_phase56_validation` — integrity validator + `GapReport`
   producer.

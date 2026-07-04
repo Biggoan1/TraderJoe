@@ -4,6 +4,64 @@ Trader Joe release history.
 
 ---
 
+## Unreleased — Phase 5.6: DuckDB query layer
+
+**Date:** 2026-07-03
+**Branch:** sprint-3/daily-digest
+**Status:** Done
+**Card:** `t_phase56_duckdb_queries` (`t_e9626fc3`)
+
+### Added
+- `strategy/warehouse/duckdb_query.py` — analytical read layer.
+  Embedded DuckDB (no server); reads the Parquet tree written by
+  `strategy.warehouse.parquet_io` directly via `read_parquet(?)`.
+- `WarehouseQueryReader(layout, db_path=None)` — in-memory by
+  default; file-backed for cross-session reuse.  Context-manager
+  friendly.
+- `scan_bars(asset_class, interval, symbols, start, end, dataset_id="")`
+  — canonical `Bar` records sorted by `(symbol, timestamp)`.
+- `coverage_summary(asset_class, interval, dataset_id)` — first /
+  last timestamp, row count, sorted symbol list, file count.
+  Returns `None` when the partition has no files.
+- `latest_bar(asset_class, interval, symbol, dataset_id="")` —
+  most recent bar per symbol.
+- `row_counts_by_symbol(asset_class, interval, dataset_id="")` —
+  `{symbol: row_count}` for the partition.
+- `ohlcv_aggregate(asset_class, interval, symbols, start, end,
+  dataset_id="")` — per-symbol min low / max high / mean close /
+  mean volume / total volume over the window.  Symbols with no
+  rows in-window omitted from the result.
+- `CoverageSummary`, `OHLCVAggregate` — frozen dataclasses for
+  the summary/aggregate returns.
+- `DuckDBQueryError` — subclass of `WarehouseIntegrityError`
+  for query-side violations (missing bounds, reversed window,
+  malformed row on read).
+- `open_reader(layout, db_path=None)` — context-manager helper.
+
+### Read-only guarantees (enforced by tests)
+- No live-runner imports; no order-path tokens; no credential
+  env-var reads; no `ApprovalRecord` / `PromotionEntry`
+  construction.  `FeatureFlags.all_disabled == True` after every
+  query.
+
+### Testing
+- +26 new tests in `tests/test_warehouse_duckdb_query.py`.
+  Full suite: **1717 passing** (was 1691; +26 net new).
+- Coverage: sorted scan, symbol / window filters, canonical Bar
+  materialisation, empty partition, bound validation, coverage
+  summary (missing, populated, serialization), latest_bar
+  (present, missing symbol, missing partition, empty-symbol
+  guard), row_counts, OHLCVAggregate arithmetic parity with
+  hand-computed values, symbol-list filter, empty-window
+  handling, context-manager lifecycle, file-backed persistence
+  across sessions, source safety, feature-flag invariance.
+
+### Dependency
+- New: `duckdb` (1.5.4).  Anticipated in the Phase 5.6 design
+  doc.  Not imported by any live-path module.
+
+---
+
 ## Unreleased — Phase 5.6: Incremental sync runner
 
 **Date:** 2026-07-03
