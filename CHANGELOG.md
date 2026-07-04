@@ -10,6 +10,7 @@ Trader Joe release history.
 **Branch:** sprint-3/daily-digest
 **Status:** Done
 **Card:** `t_phase56_data_versioning` (`t_c32b8416`)
+**Commit:** `c398a92`
 
 ### Added
 - `strategy/warehouse/versioning.py` — lineage traversal +
