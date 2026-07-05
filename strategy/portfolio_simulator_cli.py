@@ -32,7 +32,12 @@ from strategy.lab.champion import ChampionStrategy
 from strategy.lab.champion_rs import ChampionRelativeStrengthStrategy
 from strategy.lab.mean_reversion import MeanReversionStrategy
 from strategy.lab.momentum import MomentumStrategy
+from strategy.lab.momentum_15m import Momentum15mStrategy
+from strategy.lab.opening_range_breakout import OpeningRangeBreakoutStrategy
+from strategy.lab.rsi_mean_reversion import RSIMeanReversionStrategy
+from strategy.lab.sector_rotation_daily import SectorRotationDailyStrategy
 from strategy.lab.trend import TrendStrategy
+from strategy.lab.volatility_regime_filter import VolatilityRegimeFilterStrategy
 from strategy.portfolio_simulator import (
     PortfolioSimulator,
     PortfolioSimulatorConfig,
@@ -58,6 +63,11 @@ RS_CHALLENGER_KEY = "rs-challenger-v0.1.0"
 MOMENTUM_KEY = "momentum-v0.1.0"
 TREND_KEY = "trend-v0.1.0"
 MEAN_REVERSION_KEY = "mean_reversion-v0.1.0"
+MOMENTUM_15M_KEY = "momentum_15m_v1"
+OPENING_RANGE_BREAKOUT_KEY = "opening_range_breakout_v1"
+RSI_MEAN_REVERSION_KEY = "rsi_mean_reversion_v1"
+SECTOR_ROTATION_DAILY_KEY = "sector_rotation_daily_v1"
+VOLATILITY_REGIME_FILTER_KEY = "volatility_regime_filter_v1"
 
 
 KNOWN_STRATEGIES: Tuple[str, ...] = (
@@ -67,6 +77,11 @@ KNOWN_STRATEGIES: Tuple[str, ...] = (
     MOMENTUM_KEY,
     TREND_KEY,
     MEAN_REVERSION_KEY,
+    MOMENTUM_15M_KEY,
+    OPENING_RANGE_BREAKOUT_KEY,
+    RSI_MEAN_REVERSION_KEY,
+    SECTOR_ROTATION_DAILY_KEY,
+    VOLATILITY_REGIME_FILTER_KEY,
 )
 
 
@@ -99,6 +114,21 @@ def _normalize_key(raw: str) -> str:
         "mean_reversion": MEAN_REVERSION_KEY,
         "mean-reversion": MEAN_REVERSION_KEY,
         "mean_reversion-v0.1.0": MEAN_REVERSION_KEY,
+        "momentum_15m": MOMENTUM_15M_KEY,
+        "momentum-15m": MOMENTUM_15M_KEY,
+        "momentum_15m_v1": MOMENTUM_15M_KEY,
+        "opening_range_breakout": OPENING_RANGE_BREAKOUT_KEY,
+        "opening-range-breakout": OPENING_RANGE_BREAKOUT_KEY,
+        "opening_range_breakout_v1": OPENING_RANGE_BREAKOUT_KEY,
+        "rsi_mean_reversion": RSI_MEAN_REVERSION_KEY,
+        "rsi-mean-reversion": RSI_MEAN_REVERSION_KEY,
+        "rsi_mean_reversion_v1": RSI_MEAN_REVERSION_KEY,
+        "sector_rotation_daily": SECTOR_ROTATION_DAILY_KEY,
+        "sector-rotation-daily": SECTOR_ROTATION_DAILY_KEY,
+        "sector_rotation_daily_v1": SECTOR_ROTATION_DAILY_KEY,
+        "volatility_regime_filter": VOLATILITY_REGIME_FILTER_KEY,
+        "volatility-regime-filter": VOLATILITY_REGIME_FILTER_KEY,
+        "volatility_regime_filter_v1": VOLATILITY_REGIME_FILTER_KEY,
     }
     if lowered in aliases:
         return aliases[lowered]
@@ -113,6 +143,8 @@ def build_strategy_bundle(
     bars_by_symbol: Mapping[str, Sequence[Mapping[str, Any]]],
     symbols: Sequence[str],
     benchmarks: Sequence[str] = ("SPY", "QQQ"),
+    interval: Optional[Any] = None,
+    sector_map: Optional[Mapping[str, str]] = None,
 ) -> StrategyBundle:
     """Instantiate the requested strategy against the caller-supplied
     bars payload.  Champion / RS variants receive an
@@ -196,6 +228,69 @@ def build_strategy_bundle(
         evaluator = strategy.build_evaluator(bars_by_symbol, symbols)
         return StrategyBundle(
             key=MEAN_REVERSION_KEY,
+            name=strategy.name,
+            version=strategy.version,
+            strategy_id=strategy.strategy_id,
+            evaluator=evaluator,
+        )
+    if key == MOMENTUM_15M_KEY:
+        strategy = Momentum15mStrategy()
+        evaluator = strategy.build_evaluator(
+            bars_by_symbol, symbols, interval=interval
+        )
+        return StrategyBundle(
+            key=MOMENTUM_15M_KEY,
+            name=strategy.name,
+            version=strategy.version,
+            strategy_id=strategy.strategy_id,
+            evaluator=evaluator,
+        )
+    if key == OPENING_RANGE_BREAKOUT_KEY:
+        strategy = OpeningRangeBreakoutStrategy()
+        evaluator = strategy.build_evaluator(
+            bars_by_symbol, symbols, interval=interval
+        )
+        return StrategyBundle(
+            key=OPENING_RANGE_BREAKOUT_KEY,
+            name=strategy.name,
+            version=strategy.version,
+            strategy_id=strategy.strategy_id,
+            evaluator=evaluator,
+        )
+    if key == RSI_MEAN_REVERSION_KEY:
+        strategy = RSIMeanReversionStrategy()
+        evaluator = strategy.build_evaluator(
+            bars_by_symbol, symbols, interval=interval
+        )
+        return StrategyBundle(
+            key=RSI_MEAN_REVERSION_KEY,
+            name=strategy.name,
+            version=strategy.version,
+            strategy_id=strategy.strategy_id,
+            evaluator=evaluator,
+        )
+    if key == SECTOR_ROTATION_DAILY_KEY:
+        strategy = SectorRotationDailyStrategy()
+        evaluator = strategy.build_evaluator(
+            bars_by_symbol,
+            symbols,
+            interval=interval,
+            sector_map=sector_map,
+        )
+        return StrategyBundle(
+            key=SECTOR_ROTATION_DAILY_KEY,
+            name=strategy.name,
+            version=strategy.version,
+            strategy_id=strategy.strategy_id,
+            evaluator=evaluator,
+        )
+    if key == VOLATILITY_REGIME_FILTER_KEY:
+        strategy = VolatilityRegimeFilterStrategy()
+        evaluator = strategy.build_evaluator(
+            bars_by_symbol, symbols, interval=interval
+        )
+        return StrategyBundle(
+            key=VOLATILITY_REGIME_FILTER_KEY,
             name=strategy.name,
             version=strategy.version,
             strategy_id=strategy.strategy_id,
@@ -400,11 +495,16 @@ __all__ = [
     "CHAMPION_RS_KEY",
     "KNOWN_STRATEGIES",
     "MEAN_REVERSION_KEY",
+    "MOMENTUM_15M_KEY",
     "MOMENTUM_KEY",
+    "OPENING_RANGE_BREAKOUT_KEY",
     "PRESET_WINDOWS",
+    "RSI_MEAN_REVERSION_KEY",
     "RS_CHALLENGER_KEY",
+    "SECTOR_ROTATION_DAILY_KEY",
     "StrategyBundle",
     "TREND_KEY",
+    "VOLATILITY_REGIME_FILTER_KEY",
     "build_strategy_bundle",
     "load_bars_from_warehouse",
     "resolve_window",

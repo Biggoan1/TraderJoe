@@ -1,0 +1,41 @@
+# Trader Joe — crypto 24/7 paper daemon AUTO-EXECUTE (EXAMPLE ONLY)
+#
+# THIS TEMPLATE IS NOT INSTALLABLE AS-IS.  See the equity
+# .service.example next to it for the same safety rationale.
+#
+# Before turning this into a real service the operator MUST:
+#
+#   1. Set PAPER_AUTO_EXECUTE_CRYPTO=true in .env.crypto.
+#   2. Review at least one recent plan-only tick under
+#      reports/paper_daemon/crypto/ and confirm the caps, symbol
+#      allowlist, and cooldown are correct.
+#   3. Add [Install] WantedBy=multi-user.target (or similar).
+#   4. Replace /bin/false with the real ExecStart.
+#   5. Verify /etc/traderjoe/STOP_CRYPTO_PAPER does NOT exist —
+#      or exists on purpose to keep the daemon paused.
+#
+# This unit is intentionally single-shot; a paired
+# `traderjoe-crypto-paper.timer` (not shipped) is expected to
+# fire it every N minutes.  Crypto trades 24/7 so there is no
+# market-hours guard.
+
+[Unit]
+Description=Trader Joe — crypto paper daemon (AUTO-EXECUTE, EXAMPLE)
+ConditionPathExists=/etc/traderjoe/CRYPTO_AUTO_EXECUTE_APPROVED
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/hermes-trader
+EnvironmentFile=/root/hermes-trader/.env.crypto
+Environment=HERMES_CONTEXT=crypto
+# ExecStart is deliberately /bin/false.  Real form:
+#   ExecStart=/root/hermes-trader/scripts/traderjoe-crypto-paper-daemon \
+#     --symbols BTC/USD ETH/USD SOL/USD \
+#     --execute-paper-orders
+ExecStart=/bin/false
+StandardOutput=journal
+StandardError=journal
+
+# [Install] intentionally omitted — see header.

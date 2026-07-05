@@ -1,0 +1,30 @@
+# Trader Joe — equity paper daemon PLAN-ONLY tick
+#
+# Safe systemd unit: this service runs a single tick of the equity
+# paper daemon in plan-only mode.  No orders are placed.  Paired
+# with traderjoe-paper-plan.timer for periodic scheduling during
+# regular market hours.
+#
+# Copy to /etc/systemd/system/ to install.  See
+# docs/agent/env-isolation.md for isolation rules.
+
+[Unit]
+Description=Trader Joe — equity paper daemon (plan-only tick)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/hermes-trader
+EnvironmentFile=/root/hermes-trader/.env.paper
+Environment=HERMES_CONTEXT=paper
+# NOTE: no --execute-paper-orders flag; the tick runs in dry-run mode.
+ExecStart=/root/hermes-trader/scripts/traderjoe-paper-daemon \
+  --symbols AAPL MSFT NVDA SPY QQQ \
+  --strategy momentum_15m_v1 \
+  --interval 15Min
+StandardOutput=journal
+StandardError=journal
+
+# No [Install] section — this unit is invoked by the timer, not
+# enabled directly.

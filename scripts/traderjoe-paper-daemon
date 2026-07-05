@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# scripts/traderjoe-paper-daemon — one tick of the equity paper
+# daemon.  Plan-only by default.  Auto-execute requires
+# PAPER_AUTO_EXECUTE_EQUITIES=true in .env.paper AND
+# --execute-paper-orders on the command line.
+#
+# Usage (plan-only, safe):
+#   ./scripts/traderjoe-paper-daemon --symbols AAPL MSFT NVDA \
+#     --strategy momentum_15m_v1
+#
+# Usage (auto-execute; only after the operator sets the env flag):
+#   ./scripts/traderjoe-paper-daemon --symbols AAPL MSFT NVDA \
+#     --strategy momentum_15m_v1 --execute-paper-orders
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [ "${HERMES_CONTEXT:-}" = "production" ]; then
+  echo "ERROR: refusing to run traderjoe-paper-daemon with HERMES_CONTEXT=production" >&2
+  exit 1
+fi
+
+case "${PAPER:-}" in
+  False|false|0|no|off|No|Off|NO|OFF)
+    echo "ERROR: refusing to run traderjoe-paper-daemon with PAPER=${PAPER}" >&2
+    exit 1
+    ;;
+esac
+
+export HERMES_CONTEXT="${HERMES_CONTEXT:-paper}"
+
+cd "$REPO_ROOT"
+
+if [ -x "$REPO_ROOT/.venv/bin/python" ]; then
+  PYTHON="$REPO_ROOT/.venv/bin/python"
+else
+  PYTHON="python"
+fi
+
+exec "$PYTHON" -m strategy.paper_daemon_main "$@"

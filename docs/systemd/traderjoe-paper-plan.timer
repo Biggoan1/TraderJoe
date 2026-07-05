@@ -1,0 +1,23 @@
+# Trader Joe — equity paper daemon plan-only timer
+#
+# Fires the paired traderjoe-paper-plan.service every 15 minutes
+# on weekdays.  The daemon itself checks NYSE regular-session
+# hours and holidays, so triggering outside the session is a
+# harmless no-op (session_status is logged).
+#
+# Copy to /etc/systemd/system/ and:
+#   systemctl daemon-reload
+#   systemctl enable --now traderjoe-paper-plan.timer
+
+[Unit]
+Description=Trader Joe — schedule equity paper daemon plan-only tick every 15m
+
+[Timer]
+# Every 15 minutes on weekdays.  The service itself is a no-op
+# outside regular market hours, so slight over-firing is fine.
+OnCalendar=Mon..Fri *-*-* 09,10,11,12,13,14,15:00,15,30,45
+Unit=traderjoe-paper-plan.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

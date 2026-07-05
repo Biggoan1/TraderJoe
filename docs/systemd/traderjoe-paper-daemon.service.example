@@ -1,0 +1,46 @@
+# Trader Joe — equity paper daemon AUTO-EXECUTE (EXAMPLE ONLY)
+#
+# THIS TEMPLATE IS NOT INSTALLABLE AS-IS.
+#
+# The `.service.example` suffix stops systemd from loading it, and
+# ExecStart is deliberately /bin/false so a mistakenly-renamed
+# copy exits non-zero.  The [Install] section is intentionally
+# omitted so `systemctl enable` fails until the operator adds one
+# on purpose.
+#
+# Before renaming this file to `.service` you MUST:
+#
+#   1. Set PAPER_AUTO_EXECUTE_EQUITIES=true in .env.paper.
+#   2. Review at least one recent plan-only tick under
+#      reports/paper_daemon/equity/ and confirm the caps, symbol
+#      allowlist, and cooldown match your intent.
+#   3. Add [Install] WantedBy=multi-user.target below (or similar).
+#   4. Replace /bin/false with the real ExecStart.
+#   5. Verify /etc/traderjoe/STOP_EQUITY_PAPER does NOT exist —
+#      or exists on purpose to keep the daemon paused.
+#
+# See docs/agent/env-isolation.md for the invariants that hold
+# across every context; those invariants apply to this daemon.
+
+[Unit]
+Description=Trader Joe — equity paper daemon (AUTO-EXECUTE, EXAMPLE)
+ConditionPathExists=/etc/traderjoe/PAPER_AUTO_EXECUTE_APPROVED
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/hermes-trader
+EnvironmentFile=/root/hermes-trader/.env.paper
+Environment=HERMES_CONTEXT=paper
+# ExecStart is deliberately /bin/false in the example.  Real form:
+#   ExecStart=/root/hermes-trader/scripts/traderjoe-paper-daemon \
+#     --symbols AAPL MSFT NVDA SPY QQQ \
+#     --strategy momentum_15m_v1 \
+#     --interval 15Min \
+#     --execute-paper-orders
+ExecStart=/bin/false
+StandardOutput=journal
+StandardError=journal
+
+# [Install] intentionally omitted — see header.
