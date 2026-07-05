@@ -1221,6 +1221,194 @@ class TestCryptoDaemonWithDefaultLoader:
         # ensures positive momentum score).
         assert result.proposed_orders
 
+    def test_submit_stringifies_uuid_order_id(self, tmp_path: Path):
+        """Regression: alpaca-py returns a uuid.UUID on Order.id.
+        The daemon's submitted[].broker_order_id must be a str so
+        the log writer can serialize it to JSON.
+        """
+        import uuid
+
+        # Fake broker client that returns a UUID-typed .id.
+        class _FakeOrder:
+            def __init__(self):
+                self.id = uuid.uuid4()
+
+        class _FakeTradingClient:
+            def __init__(self, *args, **kwargs):
+                self.paper = kwargs.get("paper")
+                self.submitted = []
+
+            def submit_order(self, order_data):
+                self.submitted.append(order_data)
+                return _FakeOrder()
+
+        # Fake in-memory bar loader returning a positive drift so
+        # scoring picks at least one symbol.
+        def _bars(symbols, now, env):
+            price = 100.0
+            out = {}
+            for symbol in symbols:
+                bars = []
+                for i in range(30):
+                    ts = datetime(
+                        2026, 1, 5, i % 24, 0, tzinfo=timezone.utc
+                    )
+                    price *= 1.002
+                    bars.append(
+                        {
+                            "t": ts.isoformat(),
+                            "o": price,
+                            "h": price,
+                            "l": price,
+                            "c": price,
+                            "v": 100.0,
+                        }
+                    )
+                out[symbol] = bars
+            return out
+
+        daemon = CryptoPaperDaemon(
+            CryptoPaperDaemonConfig(
+                symbol_allowlist=("BTC/USD",),
+                strategy_key="momentum-v0.1.0",
+                execute=True,  # opt in to execute path
+                max_per_order_notional=100.0,
+                max_total_daily_notional=100.0,
+                max_trades_per_day=1,
+                top_n_per_tick=1,
+                env_file=".env.crypto",
+                emergency_stop_file=str(tmp_path / "STOP_CRYPTO_PAPER"),
+                state_file=str(tmp_path / "state.json"),
+                log_root=str(tmp_path / "logs"),
+                plan_root=str(tmp_path / "plans"),
+            ),
+            bar_loader=_bars,
+        )
+
+        # Patch the alpaca import at the point _submit performs it.
+        import strategy.crypto_paper_daemon as daemon_module
+        import types
+
+        fake_alpaca = types.SimpleNamespace(
+            trading=types.SimpleNamespace(
+                client=types.SimpleNamespace(
+                    TradingClient=_FakeTradingClient
+                ),
+                enums=types.SimpleNamespace(
+                    OrderSide=types.SimpleNamespace(BUY="buy"),
+                    TimeInForce=types.SimpleNamespace(GTC="gtc"),
+                ),
+                requests=types.SimpleNamespace(
+                    MarketOrderRequest=lambda **kw: kw
+                ),
+            )
+        )
+
+        env = {
+            "CRYPTO_ALPACA_API_KEY": "k",
+            "CRYPTO_ALPACA_SECRET_KEY": "s",
+            "CRYPTO_ALPACA_ENDPOINT": (
+                "https://paper-api.alpaca.markets/v2"
+            ),
+            CRYPTO_AUTO_EXECUTE_ENV_VAR: "true",
+        }
+
+        import sys
+
+        prior_alpaca = {
+            key: sys.modules[key]
+            for key in list(sys.modules)
+            if key.startswith("alpaca")
+        }
+        try:
+            for key in list(sys.modules):
+                if key.startswith("alpaca"):
+                    del sys.modules[key]
+            sys.modules["alpaca"] = fake_alpaca
+            sys.modules["alpaca.trading"] = fake_alpaca.trading
+            sys.modules["alpaca.trading.client"] = (
+                fake_alpaca.trading.client
+            )
+            sys.modules["alpaca.trading.enums"] = (
+                fake_alpaca.trading.enums
+            )
+            sys.modules["alpaca.trading.requests"] = (
+                fake_alpaca.trading.requests
+            )
+            result = daemon.run_tick(
+                now=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+                env=env,
+            )
+        finally:
+            for key in list(sys.modules):
+                if key.startswith("alpaca"):
+                    del sys.modules[key]
+            sys.modules.update(prior_alpaca)
+
+        assert result.executed
+        # broker_order_id must be a string, never a raw UUID.
+        assert result.submitted, "expected at least one submitted order"
+        for row in result.submitted:
+            if row.get("status") == "submitted":
+                assert isinstance(row["broker_order_id"], str), (
+                    f"broker_order_id must be str, got "
+                    f"{type(row['broker_order_id'])}"
+                )
+        # And the log must exist AND be valid JSON — the crash bug.
+        assert result.log_path
+        with open(result.log_path, "r") as fh:
+            payload = json.load(fh)
+        assert payload["executed"] is True
+
+    def test_write_log_succeeds_with_uuid_fields(self, tmp_path: Path):
+        """Belt-and-suspenders: even if a UUID slips through to
+        the result payload directly, _write_log must not crash.
+        """
+        import uuid
+
+        daemon = CryptoPaperDaemon(
+            CryptoPaperDaemonConfig(
+                symbol_allowlist=("BTC/USD",),
+                strategy_key="momentum-v0.1.0",
+                env_file=".env.crypto",
+                emergency_stop_file=str(tmp_path / "STOP_CRYPTO_PAPER"),
+                state_file=str(tmp_path / "state.json"),
+                log_root=str(tmp_path / "logs"),
+                plan_root=str(tmp_path / "plans"),
+            )
+        )
+        from strategy.crypto_paper_daemon import CryptoDaemonTickResult
+
+        result = CryptoDaemonTickResult(
+            tick_id="crypto-test-uuid",
+            generated_at="2026-01-05T12:00:00+00:00",
+            would_have_executed=False,
+            executed=True,
+            reason="executed",
+            proposed_orders=[
+                {
+                    "symbol": "BTC/USD",
+                    "broker_order_id": uuid.uuid4(),  # raw UUID
+                    "notional": 100.0,
+                }
+            ],
+            submitted=[
+                {
+                    "symbol": "BTC/USD",
+                    "broker_order_id": uuid.uuid4(),
+                    "status": "submitted",
+                }
+            ],
+        )
+        log_path = daemon._write_log(result)
+        assert log_path
+        # The file must be parseable JSON — UUIDs become strings.
+        with open(log_path, "r") as fh:
+            payload = json.load(fh)
+        assert payload["executed"] is True
+        submitted = payload["submitted"][0]
+        assert isinstance(submitted["broker_order_id"], str)
+
     def test_default_loader_bubbles_endpoint_refusal(self, tmp_path: Path):
         daemon = CryptoPaperDaemon(
             CryptoPaperDaemonConfig(

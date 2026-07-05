@@ -494,14 +494,14 @@ class PaperTradingBridge:
             )
             try:
                 submitted_order = client.submit_order(order_data=request)
+                raw_id = getattr(submitted_order, "id", None)
+                broker_order_id = None if raw_id is None else str(raw_id)
                 submitted.append(
                     {
                         "symbol": order.symbol,
                         "side": order.side,
                         "quantity": order.quantity,
-                        "broker_order_id": getattr(
-                            submitted_order, "id", None
-                        ),
+                        "broker_order_id": broker_order_id,
                         "status": "submitted",
                     }
                 )
@@ -559,9 +559,15 @@ class PaperTradingBridge:
                 "result": result.to_dict(),
             }
             with open(path, "w", encoding="utf-8") as fh:
-                json.dump(payload, fh, indent=2, sort_keys=True)
+                json.dump(
+                    payload,
+                    fh,
+                    indent=2,
+                    sort_keys=True,
+                    default=str,
+                )
             return str(path)
-        except OSError:
+        except (OSError, TypeError):
             return ""
 
 

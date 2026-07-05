@@ -176,7 +176,13 @@ def _save_state(state: DaemonState, path: str) -> None:
     try:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
-            json.dump(state.to_dict(), fh, indent=2, sort_keys=True)
+            json.dump(
+                state.to_dict(),
+                fh,
+                indent=2,
+                sort_keys=True,
+                default=str,
+            )
     except OSError:  # pragma: no cover
         pass
 
@@ -590,7 +596,13 @@ class EquityPaperDaemon:
         plan_dir.mkdir(parents=True, exist_ok=True)
         plan_path = plan_dir / "daemon-tick-latest.json"
         with open(plan_path, "w", encoding="utf-8") as fh:
-            json.dump(plan_payload, fh, indent=2, sort_keys=True)
+            json.dump(
+                plan_payload,
+                fh,
+                indent=2,
+                sort_keys=True,
+                default=str,
+            )
         bridge_cfg = PaperBridgeConfig(
             execute=True,
             symbol_allowlist=tuple(self._config.symbol_allowlist),
@@ -649,9 +661,15 @@ class EquityPaperDaemon:
                 "orders": [dict(o) for o in orders],
             }
             with open(path, "w", encoding="utf-8") as fh:
-                json.dump(payload, fh, indent=2, sort_keys=True)
+                json.dump(
+                    payload,
+                    fh,
+                    indent=2,
+                    sort_keys=True,
+                    default=str,
+                )
             return str(path)
-        except OSError:
+        except (OSError, TypeError):
             return ""
 
     def _write_log(self, result: DaemonTickResult) -> str:
@@ -661,10 +679,14 @@ class EquityPaperDaemon:
             path = root / f"{result.tick_id}.log.json"
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(
-                    result.to_dict(), fh, indent=2, sort_keys=True
+                    result.to_dict(),
+                    fh,
+                    indent=2,
+                    sort_keys=True,
+                    default=str,
                 )
             return str(path)
-        except OSError:
+        except (OSError, TypeError):
             return ""
 
     def _emergency_stop_active(self) -> bool:

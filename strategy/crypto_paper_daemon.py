@@ -181,7 +181,13 @@ def _save_state(state: CryptoDaemonState, path: str) -> None:
     try:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
-            json.dump(state.to_dict(), fh, indent=2, sort_keys=True)
+            json.dump(
+                state.to_dict(),
+                fh,
+                indent=2,
+                sort_keys=True,
+                default=str,
+            )
     except OSError:  # pragma: no cover
         pass
 
@@ -747,11 +753,13 @@ class CryptoPaperDaemon:
             )
             try:
                 broker_order = client.submit_order(order_data=request)
+                raw_id = getattr(broker_order, "id", None)
+                broker_order_id = None if raw_id is None else str(raw_id)
                 submitted.append(
                     {
                         "symbol": order["symbol"],
                         "quantity": order["quantity"],
-                        "broker_order_id": getattr(broker_order, "id", None),
+                        "broker_order_id": broker_order_id,
                         "status": "submitted",
                     }
                 )
@@ -806,9 +814,15 @@ class CryptoPaperDaemon:
                 "orders": [dict(o) for o in orders],
             }
             with open(path, "w", encoding="utf-8") as fh:
-                json.dump(payload, fh, indent=2, sort_keys=True)
+                json.dump(
+                    payload,
+                    fh,
+                    indent=2,
+                    sort_keys=True,
+                    default=str,
+                )
             return str(path)
-        except OSError:
+        except (OSError, TypeError):
             return ""
 
     def _write_log(self, result: CryptoDaemonTickResult) -> str:
@@ -818,10 +832,14 @@ class CryptoPaperDaemon:
             path = root / f"{result.tick_id}.log.json"
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(
-                    result.to_dict(), fh, indent=2, sort_keys=True
+                    result.to_dict(),
+                    fh,
+                    indent=2,
+                    sort_keys=True,
+                    default=str,
                 )
             return str(path)
-        except OSError:
+        except (OSError, TypeError):
             return ""
 
     def _emergency_stop_active(self) -> bool:
