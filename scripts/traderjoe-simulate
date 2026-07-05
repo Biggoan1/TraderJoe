@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# scripts/traderjoe-simulate — portfolio simulator CLI.
+#
+# Warehouse-first replay of a strategy over a historical window
+# against a paper-sized account.  Never touches a broker.  Never
+# loads .env or .env.production.
+#
+# Usage:
+#   ./scripts/traderjoe-simulate --strategy champion-v0.4.0 \
+#     --symbols AAPL MSFT NVDA \
+#     --start 2026-01-01 --end 2026-07-04 \
+#     --starting-cash 100000
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Refuse to source any env file — the simulator is warehouse-first,
+# broker-free, and must never accidentally inherit production
+# credentials.  The Python entry point double-checks HERMES_CONTEXT
+# and PAPER as defense in depth.
+if [ "${HERMES_CONTEXT:-}" = "production" ]; then
+  echo "ERROR: refusing to run traderjoe-simulate with HERMES_CONTEXT=production" >&2
+  exit 1
+fi
+
+export HERMES_CONTEXT="${HERMES_CONTEXT:-simulator}"
+
+cd "$REPO_ROOT"
+
+# Prefer the project's virtualenv Python if present.
+if [ -x "$REPO_ROOT/.venv/bin/python" ]; then
+  PYTHON="$REPO_ROOT/.venv/bin/python"
+else
+  PYTHON="python"
+fi
+
+exec "$PYTHON" -m strategy.portfolio_simulator_main "$@"

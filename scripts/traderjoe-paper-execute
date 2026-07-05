@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# scripts/traderjoe-paper-execute — paper-trading bridge for
+# simulator / research plans.
+#
+# Dry-run by default.  Placing paper orders requires the explicit
+# --execute-paper-orders flag AND a .env.paper env file.  Refuses
+# .env.production.  Never touches the live-money code path.
+#
+# Usage (dry-run):
+#   ./scripts/traderjoe-paper-execute \
+#     --from-simulation reports/portfolio_simulations/<run_id>/orders.json \
+#     --dry-run
+#
+# Usage (actual paper submission):
+#   ./scripts/traderjoe-paper-execute \
+#     --from-simulation reports/portfolio_simulations/<run_id>/orders.json \
+#     --execute-paper-orders
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Refuse production context up front.  The Python bridge repeats
+# this check after loading the env file so a passed-through
+# HERMES_CONTEXT=production is caught either way.
+if [ "${HERMES_CONTEXT:-}" = "production" ]; then
+  echo "ERROR: refusing to run traderjoe-paper-execute with HERMES_CONTEXT=production" >&2
+  exit 1
+fi
+
+# Refuse any process-level PAPER=False.
+case "${PAPER:-}" in
+  False|false|0|no|off|No|Off|NO|OFF)
+    echo "ERROR: refusing to run traderjoe-paper-execute with PAPER=${PAPER}" >&2
+    exit 1
+    ;;
+esac
+
+export HERMES_CONTEXT="${HERMES_CONTEXT:-paper}"
+
+cd "$REPO_ROOT"
+
+if [ -x "$REPO_ROOT/.venv/bin/python" ]; then
+  PYTHON="$REPO_ROOT/.venv/bin/python"
+else
+  PYTHON="python"
+fi
+
+exec "$PYTHON" -m strategy.paper_bridge_main "$@"
