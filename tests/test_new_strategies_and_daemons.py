@@ -42,6 +42,7 @@ from strategy.crypto_paper_daemon import (
     CryptoPaperDaemon,
     CryptoPaperDaemonConfig,
     CryptoPaperDaemonError,
+    default_crypto_bar_loader,
     load_crypto_env,
 )
 from strategy.lab.interval_requirements import IntervalMismatchError
@@ -960,3 +961,290 @@ class TestSourceSafety:
         assert "PAPER = True" in source
         source = Path("crypto_trader.py").read_text()
         assert "PAPER = True" in source
+
+
+# ---------------------------------------------------------------------------
+# Default crypto bar loader
+# ---------------------------------------------------------------------------
+
+
+class _FakeCryptoBar:
+    """Minimal bar object matching the alpaca-py Bar attribute
+    surface — we don't need the full SDK to test the loader shape.
+    """
+
+    def __init__(self, timestamp, open_, high, low, close, volume):
+        self.timestamp = timestamp
+        self.open = open_
+        self.high = high
+        self.low = low
+        self.close = close
+        self.volume = volume
+
+
+class _FakeBarSet:
+    def __init__(self, data):
+        self.data = data
+
+
+class _FakeCryptoClient:
+    def __init__(self, *, api_key, secret_key, response):
+        self.api_key = api_key
+        self.secret_key = secret_key
+        self.response = response
+        self.calls = 0
+
+    def get_crypto_bars(self, request):
+        self.calls += 1
+        self.last_request = request
+        return self.response
+
+
+def _sample_response(symbols: Sequence[str]) -> _FakeBarSet:
+    data = {}
+    for symbol in symbols:
+        bars = []
+        price = 100.0 if "BTC" not in symbol else 50_000.0
+        for i in range(30):
+            ts = datetime(2026, 1, 5, i % 24, 0, tzinfo=timezone.utc)
+            price *= 1.001
+            bars.append(
+                _FakeCryptoBar(
+                    timestamp=ts,
+                    open_=price,
+                    high=price * 1.001,
+                    low=price * 0.999,
+                    close=price,
+                    volume=100.0,
+                )
+            )
+        data[symbol] = bars
+    return _FakeBarSet(data=data)
+
+
+def _crypto_env_valid() -> Dict[str, str]:
+    return {
+        "CRYPTO_ALPACA_API_KEY": "key",
+        "CRYPTO_ALPACA_SECRET_KEY": "secret",
+        "CRYPTO_ALPACA_ENDPOINT": "https://paper-api.alpaca.markets/v2",
+    }
+
+
+class TestDefaultCryptoBarLoader:
+    def test_success_returns_shaped_bars(self):
+        symbols = ["BTC/USD", "ETH/USD"]
+        fake_response = _sample_response(symbols)
+        client_holder: List[_FakeCryptoClient] = []
+
+        def _make_client(*, api_key, secret_key):
+            client = _FakeCryptoClient(
+                api_key=api_key,
+                secret_key=secret_key,
+                response=fake_response,
+            )
+            client_holder.append(client)
+            return client
+
+        def _make_request(symbols, start, end):
+            return {"symbols": list(symbols), "start": start, "end": end}
+
+        bars = default_crypto_bar_loader(
+            symbols=symbols,
+            now_utc=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+            env=_crypto_env_valid(),
+            client_factory=(_make_client, _make_request),
+        )
+        assert set(bars.keys()) == set(symbols)
+        for sym in symbols:
+            assert bars[sym], f"no bars returned for {sym}"
+            first = bars[sym][0]
+            assert set(first.keys()) == {"t", "o", "h", "l", "c", "v"}
+            assert isinstance(first["c"], float)
+        assert client_holder[0].calls == 1
+
+    def test_missing_credentials_raises(self):
+        with pytest.raises(CryptoPaperDaemonError):
+            default_crypto_bar_loader(
+                symbols=["BTC/USD"],
+                now_utc=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+                env={
+                    "CRYPTO_ALPACA_ENDPOINT": (
+                        "https://paper-api.alpaca.markets/v2"
+                    )
+                },
+            )
+
+    def test_refuses_non_paper_endpoint(self):
+        bad_env = {
+            "CRYPTO_ALPACA_API_KEY": "k",
+            "CRYPTO_ALPACA_SECRET_KEY": "s",
+            "CRYPTO_ALPACA_ENDPOINT": "https://api.alpaca.markets/v2",
+        }
+        with pytest.raises(CryptoPaperDaemonError):
+            default_crypto_bar_loader(
+                symbols=["BTC/USD"],
+                now_utc=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+                env=bad_env,
+            )
+
+    def test_refuses_paper_alpaca_credentials_only(self):
+        """The crypto loader must NOT accept equity-paper creds as
+        a fallback — it reads only the CRYPTO_ALPACA_* namespace.
+        """
+        env = {
+            "PAPER_ALPACA_API_KEY": "should-not-be-used",
+            "PAPER_ALPACA_SECRET_KEY": "should-not-be-used",
+            "CRYPTO_ALPACA_ENDPOINT": (
+                "https://paper-api.alpaca.markets/v2"
+            ),
+        }
+        with pytest.raises(CryptoPaperDaemonError):
+            default_crypto_bar_loader(
+                symbols=["BTC/USD"],
+                now_utc=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+                env=env,
+            )
+
+    def test_missing_endpoint_raises(self):
+        with pytest.raises(CryptoPaperDaemonError):
+            default_crypto_bar_loader(
+                symbols=["BTC/USD"],
+                now_utc=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+                env={
+                    "CRYPTO_ALPACA_API_KEY": "k",
+                    "CRYPTO_ALPACA_SECRET_KEY": "s",
+                },
+            )
+
+    def test_invalid_lookback_raises(self):
+        with pytest.raises(CryptoPaperDaemonError):
+            default_crypto_bar_loader(
+                symbols=["BTC/USD"],
+                now_utc=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+                env=_crypto_env_valid(),
+                lookback_bars=0,
+                client_factory=(
+                    lambda **kw: None,
+                    lambda symbols, start, end: None,
+                ),
+            )
+
+    def test_start_precedes_end(self):
+        fake_response = _sample_response(["BTC/USD"])
+        captured: Dict[str, Any] = {}
+
+        def _make_client(*, api_key, secret_key):
+            return _FakeCryptoClient(
+                api_key=api_key,
+                secret_key=secret_key,
+                response=fake_response,
+            )
+
+        def _make_request(symbols, start, end):
+            captured["start"] = start
+            captured["end"] = end
+            return {"symbols": list(symbols), "start": start, "end": end}
+
+        default_crypto_bar_loader(
+            symbols=["BTC/USD"],
+            now_utc=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+            env=_crypto_env_valid(),
+            lookback_bars=10,
+            interval_minutes=60,
+            client_factory=(_make_client, _make_request),
+        )
+        assert captured["start"] < captured["end"]
+        assert (captured["end"] - captured["start"]).total_seconds() > 0
+
+
+class TestCryptoDaemonWithDefaultLoader:
+    """End-to-end: daemon uses the default loader (with a mock
+    SDK client) and stays in dry-run without any submit calls.
+    """
+
+    def test_dry_run_uses_default_loader_and_makes_no_submit(
+        self, tmp_path: Path
+    ):
+        fake_response = _sample_response(["BTC/USD", "ETH/USD"])
+        client_holder: List[_FakeCryptoClient] = []
+
+        def _make_client(*, api_key, secret_key):
+            client = _FakeCryptoClient(
+                api_key=api_key,
+                secret_key=secret_key,
+                response=fake_response,
+            )
+            client_holder.append(client)
+            return client
+
+        def _make_request(symbols, start, end):
+            return {"symbols": list(symbols), "start": start, "end": end}
+
+        submit_calls: List[Any] = []
+
+        def _bound_loader(symbols, now, env):
+            return default_crypto_bar_loader(
+                symbols=symbols,
+                now_utc=now,
+                env=env,
+                client_factory=(_make_client, _make_request),
+            )
+
+        daemon = CryptoPaperDaemon(
+            CryptoPaperDaemonConfig(
+                symbol_allowlist=("BTC/USD", "ETH/USD"),
+                strategy_key="momentum-v0.1.0",
+                execute=False,
+                env_file=".env.crypto",
+                emergency_stop_file=str(tmp_path / "STOP_CRYPTO_PAPER"),
+                state_file=str(tmp_path / "state.json"),
+                log_root=str(tmp_path / "logs"),
+                plan_root=str(tmp_path / "plans"),
+            ),
+            bar_loader=_bound_loader,
+        )
+        daemon._submit = lambda *a, **kw: (  # type: ignore
+            submit_calls.append("submit"),
+            [],
+        )[1]
+
+        result = daemon.run_tick(
+            now=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+            env=_crypto_env_valid(),
+        )
+        # Loader was called through the daemon.
+        assert client_holder, "default loader should have been invoked"
+        # Dry-run: no submit call.
+        assert not submit_calls
+        assert result.executed is False
+        # We should have proposed at least one order (positive drift
+        # ensures positive momentum score).
+        assert result.proposed_orders
+
+    def test_default_loader_bubbles_endpoint_refusal(self, tmp_path: Path):
+        daemon = CryptoPaperDaemon(
+            CryptoPaperDaemonConfig(
+                symbol_allowlist=("BTC/USD",),
+                strategy_key="momentum-v0.1.0",
+                execute=False,
+                env_file=".env.crypto",
+                emergency_stop_file=str(tmp_path / "STOP_CRYPTO_PAPER"),
+                state_file=str(tmp_path / "state.json"),
+                log_root=str(tmp_path / "logs"),
+                plan_root=str(tmp_path / "plans"),
+            )
+        )
+        # Missing credentials → loader raises inside daemon.
+        env_missing_creds = {
+            "CRYPTO_ALPACA_API_KEY": "",
+            "CRYPTO_ALPACA_SECRET_KEY": "",
+            "CRYPTO_ALPACA_ENDPOINT": (
+                "https://paper-api.alpaca.markets/v2"
+            ),
+        }
+        result = daemon.run_tick(
+            now=datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc),
+            env=env_missing_creds,
+        )
+        assert result.reason.startswith("bar_load_failed")
+        assert not result.executed

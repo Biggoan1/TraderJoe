@@ -24,10 +24,11 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
@@ -38,6 +39,10 @@ from typing import (
 )
 
 from strategy.paper_bridge import _parse_env_file  # small helper reuse
+
+
+DEFAULT_LOADER_LOOKBACK_BARS = 30
+DEFAULT_LOADER_INTERVAL_MINUTES = 60
 
 
 DEFAULT_EMERGENCY_STOP_FILE = "/etc/traderjoe/STOP_CRYPTO_PAPER"
@@ -248,6 +253,164 @@ def _resolve_credentials(env: Mapping[str, str]) -> Tuple[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# Default bar loader
+# ---------------------------------------------------------------------------
+
+
+CryptoBarLoader = Callable[
+    [Sequence[str], datetime, Mapping[str, str]],
+    Dict[str, List[Dict[str, Any]]],
+]
+
+
+def default_crypto_bar_loader(
+    symbols: Sequence[str],
+    now_utc: datetime,
+    env: Mapping[str, str],
+    *,
+    lookback_bars: int = DEFAULT_LOADER_LOOKBACK_BARS,
+    interval_minutes: int = DEFAULT_LOADER_INTERVAL_MINUTES,
+    client_factory: Optional[Callable[..., Any]] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Fetch recent crypto bars for ``symbols`` using the paper
+    crypto Alpaca data endpoint.
+
+    Safety guarantees:
+
+    * Reads only ``CRYPTO_ALPACA_*`` credentials from ``env`` — never
+      falls back to ``PAPER_ALPACA_*``, ``ALPACA_*``, or
+      ``PRODUCTION_ALPACA_*``.
+    * Validates the resolved endpoint looks like a paper endpoint
+      (``paper-api.alpaca.markets``); otherwise raises.
+    * Never places orders — this is a data-API call, not the
+      trading client.
+    * ``client_factory`` is exposed for tests; production callers
+      let the function build the SDK client itself.
+    """
+    api_key = str(env.get("CRYPTO_ALPACA_API_KEY", "")).strip()
+    secret_key = str(env.get("CRYPTO_ALPACA_SECRET_KEY", "")).strip()
+    if not api_key or not secret_key:
+        raise CryptoPaperDaemonError(
+            "refusing to load bars: CRYPTO_ALPACA_API_KEY / "
+            "CRYPTO_ALPACA_SECRET_KEY missing"
+        )
+    _resolve_endpoint(env)  # raises on non-paper endpoint
+
+    if interval_minutes <= 0:
+        raise CryptoPaperDaemonError(
+            f"interval_minutes must be positive (got {interval_minutes})"
+        )
+    if lookback_bars <= 0:
+        raise CryptoPaperDaemonError(
+            f"lookback_bars must be positive (got {lookback_bars})"
+        )
+
+    if client_factory is None:
+        try:
+            from alpaca.data.historical import CryptoHistoricalDataClient
+            from alpaca.data.requests import CryptoBarsRequest
+            from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+        except Exception as exc:  # pragma: no cover - env guard
+            raise CryptoPaperDaemonError(
+                f"alpaca-py SDK not available: {exc}"
+            ) from exc
+
+        def _make_client(*, api_key: str, secret_key: str):
+            return CryptoHistoricalDataClient(
+                api_key=api_key, secret_key=secret_key
+            )
+
+        def _make_request(symbols, start, end):
+            if interval_minutes == 60:
+                tf = TimeFrame.Hour
+            elif interval_minutes == 1440:
+                tf = TimeFrame.Day
+            elif interval_minutes % 60 == 0:
+                tf = TimeFrame(
+                    amount=interval_minutes // 60,
+                    unit=TimeFrameUnit.Hour,
+                )
+            else:
+                tf = TimeFrame(
+                    amount=interval_minutes, unit=TimeFrameUnit.Minute
+                )
+            return CryptoBarsRequest(
+                symbol_or_symbols=list(symbols),
+                timeframe=tf,
+                start=start,
+                end=end,
+            )
+
+        client_factory = (_make_client, _make_request)
+
+    make_client, make_request = client_factory
+    client = make_client(api_key=api_key, secret_key=secret_key)
+    end = now_utc if now_utc.tzinfo else now_utc.replace(tzinfo=timezone.utc)
+    start = end - timedelta(minutes=interval_minutes * (lookback_bars + 5))
+    request = make_request(list(symbols), start, end)
+    response = client.get_crypto_bars(request)
+
+    return _shape_crypto_bars(response, symbols)
+
+
+def _shape_crypto_bars(
+    response: Any,
+    symbols: Sequence[str],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Normalise the SDK response into the ``{t,o,h,l,c,v}`` dict
+    shape the daemon consumes.
+
+    The SDK's ``BarSet`` exposes bars as an attribute of the
+    ``response.data`` mapping keyed by symbol.  Each bar has
+    ``.timestamp``, ``.open``, ``.high``, ``.low``, ``.close``,
+    ``.volume`` (datetime + floats).  Tests may substitute a plain
+    dict with the same shape.
+    """
+    result: Dict[str, List[Dict[str, Any]]] = {sym: [] for sym in symbols}
+    data = getattr(response, "data", None)
+    if data is None and isinstance(response, Mapping):
+        data = response
+    if not data:
+        return result
+    for symbol in symbols:
+        bars_for_symbol = data.get(symbol) or []
+        result[symbol] = []
+        for bar in bars_for_symbol:
+            ts = getattr(bar, "timestamp", None)
+            if ts is None and isinstance(bar, Mapping):
+                ts = bar.get("timestamp") or bar.get("t")
+            if ts is None:
+                continue
+            if isinstance(ts, datetime):
+                ts_iso = ts.astimezone(timezone.utc).isoformat()
+            else:
+                ts_iso = str(ts)
+            open_ = _bar_attr(bar, "open", "o")
+            high = _bar_attr(bar, "high", "h")
+            low = _bar_attr(bar, "low", "l")
+            close = _bar_attr(bar, "close", "c")
+            volume = _bar_attr(bar, "volume", "v")
+            result[symbol].append(
+                {
+                    "t": ts_iso,
+                    "o": float(open_),
+                    "h": float(high),
+                    "l": float(low),
+                    "c": float(close),
+                    "v": float(volume),
+                }
+            )
+    return result
+
+
+def _bar_attr(bar: Any, attr_name: str, dict_key: str) -> float:
+    value = getattr(bar, attr_name, None)
+    if value is None and isinstance(bar, Mapping):
+        value = bar.get(attr_name, bar.get(dict_key, 0.0))
+    return float(value or 0.0)
+
+
+# ---------------------------------------------------------------------------
 # Result
 # ---------------------------------------------------------------------------
 
@@ -328,12 +491,12 @@ class CryptoPaperDaemon:
         self,
         config: CryptoPaperDaemonConfig,
         *,
-        bar_loader=None,
+        bar_loader: Optional[CryptoBarLoader] = None,
         scorer=None,
     ):
         config.validate()
         self._config = config
-        self._bar_loader = bar_loader
+        self._bar_loader = bar_loader or default_crypto_bar_loader
         self._scorer = scorer or _default_scorer
 
     def run_tick(
@@ -392,17 +555,18 @@ class CryptoPaperDaemon:
         # 4. Load bars.
         try:
             if bars_by_symbol is None:
-                if self._bar_loader is None:
-                    raise CryptoPaperDaemonError(
-                        "no bar_loader configured; supply bars_by_symbol "
-                        "or configure a loader"
-                    )
                 bars = self._bar_loader(
-                    self._config.symbol_allowlist, now_utc
+                    self._config.symbol_allowlist,
+                    now_utc,
+                    resolved_env,
                 )
             else:
                 bars = {sym: list(v) for sym, v in bars_by_symbol.items()}
-        except Exception as exc:
+        except CryptoPaperDaemonError as exc:
+            result.reason = f"bar_load_failed:{exc}"
+            result.log_path = self._write_log(result)
+            return result
+        except Exception as exc:  # pragma: no cover - defensive
             result.reason = f"bar_load_failed:{exc}"
             result.log_path = self._write_log(result)
             return result
@@ -679,6 +843,7 @@ class CryptoPaperDaemon:
 
 __all__ = [
     "AUTO_EXECUTE_ENV_VAR",
+    "CryptoBarLoader",
     "CryptoDaemonState",
     "CryptoDaemonTickResult",
     "CryptoPaperDaemon",
@@ -686,11 +851,14 @@ __all__ = [
     "CryptoPaperDaemonError",
     "DEFAULT_COOLDOWN_MINUTES",
     "DEFAULT_EMERGENCY_STOP_FILE",
+    "DEFAULT_LOADER_INTERVAL_MINUTES",
+    "DEFAULT_LOADER_LOOKBACK_BARS",
     "DEFAULT_LOG_ROOT",
     "DEFAULT_MAX_PER_ORDER_NOTIONAL",
     "DEFAULT_MAX_TOTAL_DAILY_NOTIONAL",
     "DEFAULT_MAX_TRADES_PER_DAY",
     "DEFAULT_PLAN_ROOT",
     "DEFAULT_STATE_FILE",
+    "default_crypto_bar_loader",
     "load_crypto_env",
 ]
