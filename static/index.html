@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trader Joe</title>
+<style>
+  :root {
+    --page:        #f9f9f7;
+    --surface:     #fcfcfb;
+    --ink:         #0b0b0b;
+    --ink-2:       #52514e;
+    --muted:       #898781;
+    --grid:        #e1e0d9;
+    --baseline:    #c3c2b7;
+    --border:      rgba(11,11,11,0.10);
+    --series:      #2a78d6;
+    --s-swing:     #2a78d6;
+    --s-factor:    #d97706;
+    --s-crypto:    #7c5cd6;
+    --s-metals:    #0f9488;
+    --good:        #006300;
+    --bad:         #d03b3b;
+    --status-good: #0ca30c;
+    --status-bad:  #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page:     #0d0d0d;
+      --surface:  #1a1a19;
+      --ink:      #ffffff;
+      --ink-2:    #c3c2b7;
+      --muted:    #898781;
+      --grid:     #2c2c2a;
+      --baseline: #383835;
+      --border:   rgba(255,255,255,0.10);
+      --series:   #3987e5;
+      --s-swing:  #3987e5;
+      --s-factor: #f59e0b;
+      --s-crypto: #a78bfa;
+      --s-metals: #2dd4bf;
+      --good:     #0ca30c;
+      --bad:      #d03b3b;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 650; }
+  .sub { color: var(--ink-2); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 2px 10px; font-size: 12.5px; color: var(--ink-2);
+    background: var(--surface);
+  }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  .ticker {
+    overflow: hidden; white-space: nowrap; margin: 0 0 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); padding: 6px 0;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+  }
+  .ticker-track { display: inline-flex; gap: 26px; padding-left: 26px; animation: tickerscroll 45s linear infinite; will-change: transform; }
+  .ticker:hover .ticker-track { animation-play-state: paused; }
+  @keyframes tickerscroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) {
+    .ticker { overflow-x: auto; }
+    .ticker-track { animation: none; }
+  }
+  .tick { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .tick b { color: var(--ink); font-weight: 600; margin-right: 6px; }
+  .tick .up { color: var(--good); }
+  .tick .down { color: var(--bad); }
+
+  .tiles.mkt { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
+  .tiles.mkt .tile { padding: 8px 12px; }
+  .tiles.mkt .value { font-size: 18px; }
+
+  .lg { font-size: 12px; color: var(--ink-2); margin-left: 10px; white-space: nowrap; font-weight: 400; }
+  .lgkey { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+
+  .shadow-section { margin: 2px 0 12px; }
+  .shadow-head { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 0 0 8px 2px; }
+  .tile.shadow { border-style: dashed; }
+  .shadow-desc { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+
+  .filters { display: flex; gap: 6px; margin: 14px 0 12px; }
+  .filters button {
+    font: inherit; font-size: 13px; color: var(--ink-2);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; padding: 4px 12px; cursor: pointer;
+  }
+  .filters button:hover { color: var(--ink); }
+  .filters button.on { color: var(--ink); font-weight: 600; border-color: var(--baseline); }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .tile .label { font-size: 12.5px; color: var(--ink-2); margin-bottom: 2px; }
+  .tile .value { font-size: 24px; font-weight: 600; }
+  .tile .delta { font-size: 12.5px; margin-top: 2px; }
+  .delta.up   { color: var(--good); }
+  .delta.down { color: var(--bad); }
+  .delta.flat { color: var(--muted); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .card h2 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+  .hsub { font-weight: 400; font-size: 12px; color: var(--ink-2); margin-left: 4px; }
+  .chart-wrap { position: relative; }
+  #chart { display: block; width: 100%; height: 260px; }
+  #tooltip {
+    position: absolute; pointer-events: none; display: none;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    white-space: nowrap; z-index: 2;
+  }
+  #tooltip .tv { font-weight: 650; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+  #tooltip .tv .key { display: inline-block; width: 10px; height: 0; border-top: 2px solid var(--series); border-radius: 2px; }
+  #tooltip .td { color: var(--ink-2); margin-top: 1px; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 4px 10px 4px 0; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  td { padding: 5px 10px 5px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.pos { color: var(--good); font-variant-numeric: tabular-nums; text-align: right; }
+  td.neg { color: var(--bad); font-variant-numeric: tabular-nums; text-align: right; }
+  td.dim { color: var(--ink-2); }
+  td.wrap { white-space: normal; min-width: 180px; }
+  .chip {
+    display: inline-block; border: 1px solid var(--border); border-radius: 6px;
+    padding: 1px 8px; margin: 2px 3px 2px 0; font-size: 12.5px; color: var(--ink-2);
+  }
+  details.tbl summary { cursor: pointer; color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  .empty { color: var(--muted); padding: 8px 0; }
+  footer { color: var(--muted); font-size: 12px; margin: 18px 0 6px; }
+
+  .cmds { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cmds button, #cmd-send {
+    font: inherit; font-size: 13.5px; color: var(--ink);
+    background: var(--page); border: 1px solid var(--baseline);
+    border-radius: 8px; padding: 7px 14px; cursor: pointer;
+  }
+  .cmds button:hover, #cmd-send:hover { border-color: var(--series); }
+  .cmds button:disabled, #cmd-send:disabled { opacity: 0.5; cursor: default; }
+  .cmdrow { display: flex; gap: 8px; margin-top: 10px; }
+  #cmd-input {
+    flex: 1; font: inherit; font-size: 13.5px; color: var(--ink);
+    background: var(--page); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 10px; min-width: 120px;
+  }
+  #cmd-input:focus { outline: none; border-color: var(--series); }
+  #cmd-status { font-size: 12.5px; color: var(--ink-2); margin-top: 8px; min-height: 1.2em; }
+  #cmd-status.err { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trader Joe</h1>
+  <span class="sub">paper-trading agent</span>
+  <span class="pill" id="svc"><span class="dot" style="background:var(--muted)"></span>checking…</span>
+</header>
+
+<div class="ticker" id="ticker-wrap" style="display:none"><div class="ticker-track" id="ticker"></div></div>
+
+<div class="filters" id="filters">
+  <button data-days="-1" class="on">Today</button>
+  <button data-days="7">7d</button>
+  <button data-days="30">30d</button>
+  <button data-days="90">90d</button>
+  <button data-days="0">All</button>
+</div>
+
+<div class="tiles">
+  <div class="tile"><div class="label">Combined — all accounts</div><div class="value" id="t-comb">–</div><div class="delta" id="t-comb-d"></div></div>
+  <div class="tile"><div class="label">Swing · champion</div><div class="value" id="t-swing">–</div><div class="delta" id="t-swing-d"></div></div>
+  <div class="tile"><div class="label">Factor · fast re-entry</div><div class="value" id="t-factor">–</div><div class="delta" id="t-factor-d"></div></div>
+  <div class="tile"><div class="label">Crypto · Elliott Wave</div><div class="value" id="t-crypto">–</div><div class="delta" id="t-crypto-d"></div></div>
+  <div class="tile"><div class="label">Swing ↔ Factor corr.</div><div class="value" id="t-corr">–</div><div class="delta" id="t-corr-d"></div></div>
+  <div class="tile"><div class="label">Metals ↔ Swing corr.</div><div class="value" id="t-mcorr">–</div><div class="delta" id="t-mcorr-d"></div></div>
+</div>
+
+<div class="shadow-section" id="shadow-section" style="display:none">
+  <div class="shadow-head">Shadow books <span class="hsub">virtual $100k · no real money · tracked for the strategy race</span></div>
+  <div class="tiles" id="shadow-tiles"></div>
+</div>
+
+<div class="tiles mkt" id="mkt-tiles" style="display:none"></div>
+
+<div class="tiles mkt" id="metal-tiles" style="display:none"></div>
+
+<div class="tiles mkt" id="energy-tiles" style="display:none"></div>
+
+<div class="tiles mkt" id="bond-tiles" style="display:none"></div>
+
+<div class="card">
+  <h2>Commands</h2>
+  <div class="cmds" id="cmds">
+    <button data-msg="Good morning">Good morning</button>
+    <button data-msg="Run a market scan">Scan</button>
+    <button data-msg="Show my positions">Positions</button>
+    <button data-msg="Send my report">Report</button>
+    <button data-msg="Show pending trades">Pending trades</button>
+  </div>
+  <div class="cmdrow">
+    <input id="cmd-input" placeholder="Message Trader Joe…" maxlength="500">
+    <button id="cmd-send">Send</button>
+  </div>
+  <div id="cmd-status"></div>
+</div>
+
+<div class="card">
+  <h2>Equity — all strategies <span id="legend"></span></h2>
+  <div class="chart-wrap">
+    <svg id="chart" role="img" aria-label="Portfolio value over time"></svg>
+    <div id="tooltip"></div>
+  </div>
+  <details class="tbl"><summary>View as table</summary>
+    <div class="scroll"><table id="equity-table"></table></div>
+  </details>
+</div>
+
+<div class="cols">
+  <div class="card">
+    <h2>Swing <span class="hsub" id="swing-sub"></span></h2>
+    <div class="scroll"><table id="positions"></table></div>
+  </div>
+  <div class="card">
+    <h2>Factor <span class="hsub" id="factor-sub"></span></h2>
+    <div class="scroll"><table id="factor-pos"></table></div>
+  </div>
+  <div class="card">
+    <h2>Crypto <span class="hsub" id="crypto-sub"></span></h2>
+    <div class="scroll"><table id="crypto-pos"></table></div>
+  </div>
+  <div class="card">
+    <h2>Recent signals</h2>
+    <div class="scroll"><table id="recs"></table></div>
+  </div>
+  <div class="card">
+    <h2>Approvals</h2>
+    <div class="scroll"><table id="approvals"></table></div>
+  </div>
+  <div class="card">
+    <h2>Trade history <span class="hsub" id="hist-sub"></span></h2>
+    <div class="scroll"><table id="history"></table></div>
+  </div>
+  <div class="card">
+    <h2>Watchlist</h2>
+    <div id="watchlist"></div>
+  </div>
+</div>
+
+<footer id="foot"></footer>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const fmtUSD = v => v == null ? "–" : v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: v >= 1000 ? 0 : 2 });
+const fmtUSD2 = v => v == null ? "–" : v.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDate = ts => { const d = new Date(ts); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
+const fmtDateTime = ts => { const d = new Date(ts); return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); };
+
+let DATA = null;
+let rangeDays = -1;   // default to Today
+
+function slice(equity) {
+  if (!rangeDays) return equity;
+  let cutoff;
+  if (rangeDays === -1) {            // Today: since local midnight
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    cutoff = d.getTime();
+  } else {
+    cutoff = Date.now() - rangeDays * 864e5;
+  }
+  const s = equity.filter(p => new Date(p.ts).getTime() >= cutoff);
+  return s.length >= 2 ? s : equity.slice(-2);
+}
+
+function setDelta(el, delta, base, upIsGood) {
+  el.textContent = "";
+  if (delta == null || base == null) return;
+  const pct = base ? (delta / Math.abs(base)) * 100 : 0;
+  const dir = delta > 0.005 ? "up" : delta < -0.005 ? "down" : "flat";
+  el.className = "delta " + (upIsGood ? dir : (dir === "up" ? "down" : dir === "down" ? "up" : "flat"));
+  const sign = delta > 0 ? "+" : "";
+  el.textContent = `${sign}${fmtUSD2(delta)} (${sign}${pct.toFixed(2)}%) vs range start`;
+}
+
+function acctTile(idv, idd, a) {
+  const v = $(idv), d = $(idd);
+  if (!a) { v.textContent = "–"; d.textContent = ""; return; }
+  v.textContent = fmtUSD2(a.equity);
+  const sgn = a.daily_pl > 0 ? "+" : "";
+  d.className = "delta " + (a.daily_pl > 0.005 ? "up" : a.daily_pl < -0.005 ? "down" : "flat");
+  d.textContent = sgn + fmtUSD2(a.daily_pl) + " (" + sgn + a.daily_pct.toFixed(2) + "%) today";
+}
+
+function renderTiles() {
+  acctTile("t-comb", "t-comb-d", DATA.combined);
+  acctTile("t-swing", "t-swing-d", DATA.live);
+  acctTile("t-factor", "t-factor-d", DATA.fastre);
+  acctTile("t-crypto", "t-crypto-d", DATA.crypto);
+  corrTile("t-corr", "t-corr-d", DATA.correlation);
+  corrTile("t-mcorr", "t-mcorr-d", DATA.metals_corr);
+}
+
+function renderShadows() {
+  const wrap = $("shadow-section"), tiles = $("shadow-tiles");
+  const s = DATA.shadows || [];
+  if (!s.length) { wrap.style.display = "none"; return; }
+  tiles.textContent = "";
+  for (const b of s) {
+    const d = document.createElement("div"); d.className = "tile shadow";
+    const l = document.createElement("div"); l.className = "label"; l.textContent = b.label;
+    const v = document.createElement("div"); v.className = "value"; v.textContent = fmtUSD(b.equity);
+    const dl = document.createElement("div");
+    dl.className = "delta " + (b.daily_pl > 0.005 ? "up" : b.daily_pl < -0.005 ? "down" : "flat");
+    const sgn = b.daily_pct > 0 ? "+" : "", ssgn = b.since_pct > 0 ? "+" : "";
+    dl.textContent = `${sgn}${b.daily_pct.toFixed(2)}% today · ${ssgn}${b.since_pct.toFixed(1)}% since incept`;
+    const desc = document.createElement("div"); desc.className = "shadow-desc"; desc.textContent = b.desc;
+    d.append(l, v, dl, desc); tiles.appendChild(d);
+  }
+  wrap.style.display = "";
+}
+
+function corrTile(idv, idd, c) {
+  const v = $(idv), d = $(idd);
+  d.className = "delta flat";
+  if (c && c.corr != null) {
+    v.textContent = c.corr.toFixed(2);
+    d.textContent = "last " + c.days + "d · lower = more diversified";
+  } else {
+    v.textContent = "–";
+    d.textContent = "collecting (" + (c ? c.days : 0) + "d of 10 needed)";
+  }
+}
+
+function renderTicker() {
+  const wrap = $("ticker-wrap"), track = $("ticker");
+  const m = DATA.market;
+  if (!m || !m.length) { wrap.style.display = "none"; return; }
+  const fmtP = t => t.price >= 100 ? Math.round(t.price).toLocaleString("en-US") : t.price.toFixed(2);
+  const fmtPct = t => " " + (t.pct > 0 ? "+" : "") + t.pct.toFixed(2) + "%";
+  const pctCls = t => t.pct > 0.005 ? "up" : t.pct < -0.005 ? "down" : "";
+  // two copies of the strip so the -50% translate loops seamlessly; on refresh,
+  // update text in place so the CSS animation doesn't restart and jump
+  if (track.children.length === m.length * 2) {
+    for (let i = 0; i < track.children.length; i++) {
+      const t = m[i % m.length], s = track.children[i];
+      s.childNodes[1].textContent = fmtP(t);
+      s.childNodes[2].textContent = fmtPct(t);
+      s.childNodes[2].className = pctCls(t);
+    }
+  } else {
+    track.textContent = "";
+    for (let rep = 0; rep < 2; rep++) {
+      for (const t of m) {
+        const s = document.createElement("span"); s.className = "tick";
+        const b = document.createElement("b"); b.textContent = t.label; s.appendChild(b);
+        s.appendChild(document.createTextNode(fmtP(t)));
+        const p = document.createElement("span");
+        p.className = pctCls(t);
+        p.textContent = fmtPct(t);
+        s.appendChild(p);
+        track.appendChild(s);
+      }
+    }
+  }
+  wrap.style.display = "";
+}
+
+const SERIES_DEFS = [
+  { key: "swing",  name: "Swing",  color: "var(--s-swing)" },
+  { key: "factor", name: "Factor", color: "var(--s-factor)" },
+  { key: "crypto", name: "Crypto", color: "var(--s-crypto)" },
+  { key: "metals", name: "Metals", color: "var(--s-metals)" },
+];
+let CURVES = null;
+let curveRange = "today";
+
+async function fetchCurves() {
+  try {
+    const res = await fetch("/api/curves?range=" + curveRange);
+    if (!(res.headers.get("content-type") || "").includes("json")) return;
+    CURVES = await res.json();
+    if (DATA) renderChart();
+  } catch (e) { /* keep whatever curves we had */ }
+}
+
+function renderChart() {
+  const svg = $("chart");
+  svg.textContent = "";
+  const W = svg.clientWidth || 800, H = svg.clientHeight || 260;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (n, attrs) => { const e = document.createElementNS(NS, n); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+
+  // Series from /api/curves (Alpaca portfolio history per account); the local
+  // snapshot curve stays as the swing fallback until curves load.
+  const liveFor = { swing: DATA.live, factor: DATA.fastre, crypto: DATA.crypto };
+  const series = [];
+  for (const def of SERIES_DEFS) {
+    let pts = ((CURVES && CURVES[def.key]) || []).filter(p => p.v);
+    if (!pts.length && def.key === "swing") {
+      pts = slice(DATA.equity).map(p => ({ t: new Date(p.ts).getTime(), v: p.value }));
+    }
+    const live = liveFor[def.key];
+    if (live && pts.length && Date.now() > pts[pts.length - 1].t) {
+      pts = pts.concat([{ t: Date.now(), v: live.equity }]);
+    }
+    if (pts.length >= 2) series.push({ key: def.key, name: def.name, color: def.color, pts });
+  }
+
+  // legend: colored key + name + latest value
+  const lg = $("legend");
+  lg.textContent = "";
+  for (const s of series) {
+    const chip = document.createElement("span"); chip.className = "lg";
+    const k = document.createElement("span"); k.className = "lgkey"; k.style.background = s.color;
+    chip.appendChild(k);
+    chip.appendChild(document.createTextNode(s.name + " " + fmtUSD(s.pts[s.pts.length - 1].v)));
+    lg.appendChild(chip);
+  }
+
+  if (!series.length) {
+    const t = el("text", { x: 12, y: 24, fill: "var(--muted)" });
+    t.textContent = "Not enough data yet"; svg.appendChild(t); return;
+  }
+
+  const padL = 56, padR = 24, padT = 12, padB = 24;
+  const x0 = Math.min(...series.map(s => s.pts[0].t));
+  const x1 = Math.max(...series.map(s => s.pts[s.pts.length - 1].t));
+  let vMin = Math.min(...series.map(s => Math.min(...s.pts.map(p => p.v))));
+  let vMax = Math.max(...series.map(s => Math.max(...s.pts.map(p => p.v))));
+  if (vMax === vMin) { vMax += 1; vMin -= 1; }
+  const span = vMax - vMin; vMin -= span * 0.08; vMax += span * 0.08;
+  const X = t => padL + ((t - x0) / (x1 - x0 || 1)) * (W - padL - padR);
+  const Y = v => padT + (1 - (v - vMin) / (vMax - vMin)) * (H - padT - padB);
+
+  // y gridlines at clean steps
+  const rawStep = (vMax - vMin) / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= rawStep) || rawStep;
+  for (let v = Math.ceil(vMin / step) * step; v <= vMax; v += step) {
+    svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v), stroke: "var(--grid)", "stroke-width": 1 }));
+    const t = el("text", { x: padL - 8, y: Y(v) + 4, "text-anchor": "end", "font-size": 11, fill: "var(--muted)", style: "font-variant-numeric: tabular-nums" });
+    t.textContent = "$" + Math.round(v).toLocaleString("en-US");
+    svg.appendChild(t);
+  }
+  // x ticks: ~5 evenly spaced; intraday ranges get times, longer ranges dates
+  for (let i = 0; i < 5; i++) {
+    const t0 = x0 + (i / 4) * (x1 - x0);
+    const t = el("text", { x: X(t0), y: H - 6, "text-anchor": i === 0 ? "start" : i === 4 ? "end" : "middle", "font-size": 11, fill: "var(--muted)" });
+    t.textContent = curveRange === "today"
+      ? new Date(t0).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+      : fmtDate(t0);
+    svg.appendChild(t);
+  }
+  // baseline
+  svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: H - padB, y2: H - padB, stroke: "var(--baseline)", "stroke-width": 1 }));
+
+  for (const s of series) {
+    const pts = s.pts.map(p => `${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`);
+    svg.appendChild(el("path", { d: "M" + pts.join("L"), fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    const lp = s.pts[s.pts.length - 1];
+    svg.appendChild(el("circle", { cx: X(lp.t), cy: Y(lp.v), r: 5, fill: "var(--surface)" }));
+    svg.appendChild(el("circle", { cx: X(lp.t), cy: Y(lp.v), r: 3.2, fill: s.color }));
+  }
+
+  // crosshair + tooltip: nearest point per series at the cursor's time
+  const cross = el("line", { y1: padT, y2: H - padB, stroke: "var(--baseline)", "stroke-width": 1, visibility: "hidden" });
+  svg.appendChild(cross);
+  const dots = series.map(s => {
+    const d = el("circle", { r: 3.5, fill: s.color, stroke: "var(--surface)", "stroke-width": 1.5, visibility: "hidden" });
+    svg.appendChild(d); return d;
+  });
+  const tip = $("tooltip");
+
+  function showAt(px) {
+    const tCur = x0 + ((px - padL) / (W - padL - padR || 1)) * (x1 - x0);
+    tip.textContent = "";
+    let when = null;
+    series.forEach((s, i) => {
+      let best = 0, bd = Infinity;
+      for (let j = 0; j < s.pts.length; j++) { const d = Math.abs(s.pts[j].t - tCur); if (d < bd) { bd = d; best = j; } }
+      const p = s.pts[best];
+      dots[i].setAttribute("cx", X(p.t)); dots[i].setAttribute("cy", Y(p.v)); dots[i].setAttribute("visibility", "visible");
+      if (when == null || Math.abs(p.t - tCur) < Math.abs(when - tCur)) when = p.t;
+      const row = document.createElement("div"); row.className = "tv";
+      const key = document.createElement("span"); key.className = "key"; key.style.borderTopColor = s.color;
+      row.appendChild(key);
+      row.appendChild(document.createTextNode(s.name + " " + fmtUSD2(p.v)));
+      tip.appendChild(row);
+    });
+    const cx = X(when != null ? when : tCur);
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+    const td = document.createElement("div"); td.className = "td";
+    td.textContent = fmtDateTime(when != null ? when : tCur);
+    tip.appendChild(td);
+    tip.style.display = "block";
+    const wrap = svg.parentElement.getBoundingClientRect();
+    const scale = wrap.width / W;
+    let lx = cx * scale + 12;
+    if (lx + tip.offsetWidth > wrap.width - 4) lx = cx * scale - tip.offsetWidth - 12;
+    tip.style.left = lx + "px";
+    tip.style.top = "8px";
+  }
+  svg.addEventListener("pointermove", ev => {
+    const r = svg.getBoundingClientRect();
+    showAt((ev.clientX - r.left) * (W / r.width));
+  });
+  svg.addEventListener("pointerleave", () => {
+    cross.setAttribute("visibility", "hidden");
+    dots.forEach(d => d.setAttribute("visibility", "hidden"));
+    tip.style.display = "none";
+  });
+
+  // table view fallback
+  const tbl = $("equity-table");
+  tbl.textContent = "";
+  const hr = document.createElement("tr");
+  for (const h of ["Time", "Swing value", "Cash"]) { const th = document.createElement("th"); th.textContent = h; if (h !== "Time") th.className = "num"; hr.appendChild(th); }
+  tbl.appendChild(hr);
+  for (const p of slice(DATA.equity).slice(-30).reverse()) {
+    const tr = document.createElement("tr");
+    const c1 = document.createElement("td"); c1.textContent = fmtDateTime(p.ts); c1.className = "dim";
+    const c2 = document.createElement("td"); c2.textContent = fmtUSD2(p.value); c2.className = "num";
+    const c3 = document.createElement("td"); c3.textContent = fmtUSD2(p.cash); c3.className = "num";
+    tr.append(c1, c2, c3); tbl.appendChild(tr);
+  }
+}
+
+function table(id, headers, rows, build) {
+  const tbl = $(id);
+  if (!tbl) return;
+  tbl.textContent = "";
+  if (!rows.length) {
+    const tr = document.createElement("tr"), td = document.createElement("td");
+    td.colSpan = headers.length; td.className = "dim"; td.textContent = "Nothing here";
+    tr.appendChild(td); tbl.appendChild(tr); return;
+  }
+  const hr = document.createElement("tr");
+  for (const h of headers) { const th = document.createElement("th"); th.textContent = h.replace(/^#/, ""); if (h.startsWith("#")) th.className = "num"; hr.appendChild(th); }
+  tbl.appendChild(hr);
+  for (const r of rows) { const tr = document.createElement("tr"); build(tr, r); tbl.appendChild(tr); }
+}
+
+function cell(tr, text, cls) { const td = document.createElement("td"); td.textContent = text == null ? "" : text; if (cls) td.className = cls; tr.appendChild(td); return td; }
+
+function subLine(el, a, extra) {
+  el.textContent = "";
+  if (!a) { el.textContent = "· unavailable"; return; }
+  const sgn = a.daily_pl > 0 ? "+" : "";
+  const col = a.daily_pl > 0.005 ? "var(--good)" : a.daily_pl < -0.005 ? "var(--bad)" : "var(--ink-2)";
+  el.append(document.createTextNode("· " + fmtUSD2(a.equity) + " "));
+  const pl = document.createElement("span"); pl.style.color = col;
+  pl.textContent = sgn + fmtUSD2(a.daily_pl) + " (" + sgn + a.daily_pct.toFixed(2) + "%) today";
+  el.appendChild(pl);
+  el.append(document.createTextNode(" · cash " + fmtUSD(a.cash) + (extra ? " · " + extra : "")));
+}
+
+function posTable(tid, a, fallbackRows) {
+  const rows = (a && a.positions ? a.positions : (fallbackRows || [])).slice()
+    .sort((x, y) => (y.market_value || 0) - (x.market_value || 0));
+  table(tid, ["Symbol", "#Qty", "#Value", "#Today", "#Total P/L"], rows, (tr, p) => {
+    const sym = p.symbol.endsWith("USD") && !p.symbol.includes("/") ? p.symbol.replace("USD", "/USD") : p.symbol;
+    cell(tr, sym);
+    cell(tr, (p.qty || 0).toLocaleString("en-US", { maximumFractionDigits: 6 }), "num");
+    cell(tr, fmtUSD2(p.market_value), "num");
+    if (p.today_pl == null) cell(tr, "—", "num");
+    else cell(tr, (p.today_pl > 0 ? "+" : "") + fmtUSD2(p.today_pl), p.today_pl >= 0 ? "pos" : "neg");
+    cell(tr, (p.unrealized_pl > 0 ? "+" : "") + fmtUSD2(p.unrealized_pl), p.unrealized_pl >= 0 ? "pos" : "neg");
+  });
+}
+
+function renderTables() {
+  const live = DATA.live, fast = DATA.fastre;
+  subLine($("swing-sub"), live, live && live.positions ? live.positions.length + " positions · agent-driven" : null);
+  posTable("positions", live, DATA.positions);
+  subLine($("factor-sub"), fast, fast && fast.positions ? fast.positions.length + " names · rebalances every 42 trading days" : null);
+  posTable("factor-pos", fast, []);
+  table("recs", ["Time", "Symbol", "Signal", "#Price", "Decision", "Notes"], DATA.recommendations, (tr, r) => {
+    cell(tr, fmtDateTime(r.created_at), "dim");
+    cell(tr, r.symbol);
+    cell(tr, r.signal);
+    cell(tr, fmtUSD2(r.price), "num");
+    cell(tr, r.user_decision, "dim");
+    cell(tr, r.ai_analysis, "wrap dim");
+  });
+  table("approvals", ["Time", "Symbol", "Side", "#Price", "#Amount", "Status"], DATA.approvals, (tr, a) => {
+    cell(tr, fmtDateTime(a.created_at), "dim");
+    cell(tr, a.symbol);
+    cell(tr, a.side);
+    cell(tr, fmtUSD2(a.price), "num");
+    cell(tr, fmtUSD2(a.amount), "num");
+    cell(tr, a.status, "dim");
+  });
+  // Crypto (separate Alpaca account) — same layout as the other two books
+  subLine($("crypto-sub"), DATA.crypto, DATA.crypto && DATA.crypto.positions ? DATA.crypto.positions.length + " positions · Elliott Wave" : null);
+  posTable("crypto-pos", DATA.crypto, []);
+
+  // Trade history — closed trades with realized P/L
+  const hist = DATA.history || [], hsub = $("hist-sub");
+  const closed = hist.filter(h => h.exit_time != null), openN = hist.length - closed.length;
+  hsub.innerHTML = "";
+  if (closed.length) {
+    const wins = closed.filter(h => h.pl > 0).length;
+    const real = closed.reduce((a, h) => a + (h.pl || 0), 0);
+    hsub.append(document.createTextNode("· " + closed.length + " closed · "));
+    const rs = document.createElement("span"); rs.style.color = real >= 0 ? "var(--good)" : "var(--bad)";
+    rs.textContent = (real > 0 ? "+" : "") + fmtUSD2(real) + " realized";
+    hsub.appendChild(rs);
+    hsub.append(document.createTextNode(" · " + wins + "/" + closed.length + " win" + (openN ? " · " + openN + " open" : "")));
+  } else if (hist.length) { hsub.textContent = "· " + hist.length + " open, none closed yet"; }
+  table("history", ["Symbol", "Side", "Closed", "#Entry", "#Exit", "#P/L", "#%"], hist, (tr, h) => {
+    cell(tr, h.symbol);
+    cell(tr, h.side, "dim");
+    cell(tr, h.exit_time ? fmtDateTime(h.exit_time) : "—", "dim");
+    cell(tr, fmtUSD2(h.entry_price), "num");
+    cell(tr, fmtUSD2(h.exit_price), "num");
+    cell(tr, (h.pl > 0 ? "+" : "") + fmtUSD2(h.pl), h.pl >= 0 ? "pos" : "neg");
+    cell(tr, h.pl_percent == null ? "—" : (h.pl_percent > 0 ? "+" : "") + h.pl_percent.toFixed(2) + "%", h.pl >= 0 ? "pos" : "neg");
+  });
+
+  const wl = $("watchlist");
+  wl.textContent = "";
+  if (!DATA.watchlist.length) { wl.textContent = "Empty"; wl.className = "empty"; }
+  for (const s of DATA.watchlist) { const c = document.createElement("span"); c.className = "chip"; c.textContent = s; wl.appendChild(c); }
+}
+
+function renderService() {
+  const s = DATA.service || {};
+  const pill = $("svc");
+  pill.textContent = "";
+  const dot = document.createElement("span"); dot.className = "dot";
+  dot.style.background = s.state === "active" ? "var(--status-good)" : "var(--status-bad)";
+  pill.appendChild(dot);
+  pill.appendChild(document.createTextNode(s.state === "active" ? "gateway running" : "gateway " + (s.state || "unknown")));
+  const last = DATA.equity[DATA.equity.length - 1];
+  $("foot").textContent = last ? "Last snapshot " + fmtDateTime(last.ts) + " · read-only view" : "read-only view";
+}
+
+const MKT_TILES = ["SPY", "QQQ", "IWM", "SMH", "BTC/USD", "ETH/USD"];
+const METAL_TILES = ["GLD", "SLV", "PPLT", "PALL", "GDX", "GDXJ", "GDXU", "GDXD"];
+const ENERGY_TILES = ["USO", "BNO", "UNG", "XLE", "XOP"];
+const BOND_TILES = ["SHY", "IEF", "TLT", "AGG", "LQD", "HYG"];
+function renderTileRow(wrapId, symbols, spot) {
+  const wrap = $(wrapId), m = DATA.market;
+  if (!m || !m.length) { wrap.style.display = "none"; return; }
+  wrap.textContent = "";
+  for (const sym of symbols) {
+    const t = m.find(x => x.symbol === sym);
+    if (!t) continue;
+    const d = document.createElement("div"); d.className = "tile";
+    const l = document.createElement("div"); l.className = "label"; l.textContent = t.label;
+    const v = document.createElement("div"); v.className = "value";
+    v.textContent = (t.pct > 0 ? "+" : "") + t.pct.toFixed(2) + "%";
+    v.style.color = t.pct > 0.005 ? "var(--good)" : t.pct < -0.005 ? "var(--bad)" : "";
+    const dd = document.createElement("div"); dd.className = "delta flat";
+    const oz = spot && spot[sym];
+    if (oz != null) {
+      dd.textContent = "$" + oz.toLocaleString("en-US", { maximumFractionDigits: 2 }) + "/oz";
+    } else {
+      dd.textContent = t.price >= 100 ? Math.round(t.price).toLocaleString("en-US") : t.price.toFixed(2);
+    }
+    d.append(l, v, dd); wrap.appendChild(d);
+  }
+  wrap.style.display = wrap.children.length ? "" : "none";
+}
+
+function renderAll() { renderTicker(); renderTiles(); renderShadows(); renderTileRow("mkt-tiles", MKT_TILES); renderTileRow("metal-tiles", METAL_TILES, DATA.metals_spot); renderTileRow("energy-tiles", ENERGY_TILES); renderTileRow("bond-tiles", BOND_TILES); renderChart(); renderTables(); renderService(); }
+
+$("filters").addEventListener("click", ev => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  rangeDays = Number(b.dataset.days);
+  curveRange = rangeDays === -1 ? "today" : rangeDays === 0 ? "all" : String(rangeDays);
+  for (const x of $("filters").children) x.classList.toggle("on", x === b);
+  renderTiles(); renderChart(); fetchCurves();
+});
+
+async function sendCommand(msg) {
+  const status = $("cmd-status");
+  const buttons = [...document.querySelectorAll("#cmds button"), $("cmd-send")];
+  buttons.forEach(b => b.disabled = true);
+  status.className = "";
+  status.textContent = "Sending…";
+  try {
+    const res = await fetch("/api/command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg }),
+    });
+    if (!(res.headers.get("content-type") || "").includes("json")) {
+      status.className = "err";
+      status.textContent = "Signed out — reloading to sign back in…";
+      buttons.forEach(b => b.disabled = false);
+      sessionExpired();
+      return;
+    }
+    const d = await res.json();
+    if (d.ok) {
+      status.textContent = `Sent "${msg}" — Joe will reply on Telegram.`;
+    } else {
+      status.className = "err";
+      status.textContent = "Failed: " + (d.error || res.status);
+    }
+  } catch (e) {
+    status.className = "err";
+    status.textContent = "Failed: " + e.message;
+  }
+  buttons.forEach(b => b.disabled = false);
+}
+
+let _expiredOnce = false;
+function sessionExpired() {  // CF Access answered with its login page
+  if (!_expiredOnce) { _expiredOnce = true; location.reload(); }
+}
+
+$("cmds").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-msg]");
+  if (b) sendCommand(b.dataset.msg);
+});
+$("cmd-send").addEventListener("click", () => {
+  const v = $("cmd-input").value.trim();
+  if (v) { sendCommand(v); $("cmd-input").value = ""; }
+});
+$("cmd-input").addEventListener("keydown", ev => {
+  if (ev.key === "Enter") $("cmd-send").click();
+});
+
+let rsz;
+window.addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => DATA && renderChart(), 150); });
+
+async function load() {
+  try {
+    const res = await fetch("/api/summary");
+    if (!(res.headers.get("content-type") || "").includes("json")) { sessionExpired(); return; }
+    DATA = await res.json();
+    renderAll();
+    fetchCurves();
+  } catch (e) {
+    $("svc").textContent = "failed to load data";
+  }
+}
+load();
+setInterval(load, 20_000);   // live-ish: refresh every 20s (Alpaca account is cached ~10s server-side)
+</script>
+</body>
+</html>
