@@ -356,6 +356,8 @@ def load_bars_from_warehouse(
     end: str,
     warehouse_root: Optional[str] = None,
     allow_provider_fallback: bool = False,
+    asset_class: Optional[Any] = None,
+    interval: Optional[Any] = None,
 ) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
     """Load daily bars for ``symbols`` between ``start`` and ``end``
     from the local warehouse.
@@ -382,6 +384,9 @@ def load_bars_from_warehouse(
         WarehouseReader,
     )
 
+    _ac = AssetClass(asset_class) if isinstance(asset_class, str) else (asset_class or AssetClass.EQUITY)
+    _iv = BarInterval(interval) if isinstance(interval, str) else (interval or BarInterval.DAILY)
+
     env: Dict[str, str] = dict(os.environ)
     if warehouse_root:
         env["WAREHOUSE_ROOT"] = warehouse_root
@@ -398,8 +403,8 @@ def load_bars_from_warehouse(
         for symbol in symbols:
             try:
                 hit = reader.fetch_bars(
-                    asset_class=AssetClass.EQUITY,
-                    interval=BarInterval.DAILY,
+                    asset_class=_ac,
+                    interval=_iv,
                     symbols=[symbol],
                     start=start,
                     end=end,
@@ -443,6 +448,8 @@ def run_simulation(
     bars_by_symbol: Optional[
         Mapping[str, Sequence[Mapping[str, Any]]]
     ] = None,
+    asset_class: Optional[Any] = None,
+    interval: Optional[Any] = None,
 ) -> PortfolioSimulationResult:
     """One-shot orchestrator: load warehouse bars → build strategy →
     simulate → return the result.
@@ -462,16 +469,21 @@ def run_simulation(
             end=end,
             warehouse_root=warehouse_root,
             allow_provider_fallback=allow_provider_fallback,
+            asset_class=asset_class,
+            interval=interval,
         )
     else:
         bars = {sym: list(v) for sym, v in bars_by_symbol.items()}
         prov = dict(dataset_provenance or {"source": "in_memory"})
 
+    from strategy.market_data_provider import BarInterval as _BI
+    _iv = interval if not isinstance(interval, str) else _BI(interval)
     bundle = build_strategy_bundle(
         strategy_key,
         bars,
         symbols,
         benchmarks=tuple(benchmarks),
+        interval=_iv,
     )
 
     events = events_from_bars(bars)

@@ -167,6 +167,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="skip writing the report artifacts (test / dry-run only)",
     )
+    parser.add_argument(
+        "--asset-class",
+        default="equity",
+        help="asset class: equity|etf|crypto (default: equity)",
+    )
+    parser.add_argument(
+        "--interval",
+        default="1Day",
+        help="bar interval: 1Day|1Hour|15Min|5Min|1Min (default: 1Day)",
+    )
     return parser
 
 
@@ -288,6 +298,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             warehouse_root=args.warehouse_root,
             allow_provider_fallback=args.allow_provider_fallback,
             benchmarks=args.benchmarks,
+            asset_class=args.asset_class,
+            interval=args.interval,
         )
         paths = None
         if not args.no_write:

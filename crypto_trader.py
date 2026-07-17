@@ -73,12 +73,57 @@ ET = ZoneInfo("US/Eastern")
 ORB_MAX_TRADE_MINUTES = 120  # Stop looking for ORB setups after 2h
 
 # Crypto watchlist — Alpaca symbols for trading, yfinance for data
-CRYPTO_SYMBOLS = ["BTC/USD", "ETH/USD", "SOL/USD"]
+# All 26 tradable crypto symbols with yfinance data (6 excluded: GRT/HYPE/PEPE/POL/TRUMP/UNI = delisted)
+# PAXG is gold-backed; included for completeness but unlikely to trigger EW patterns
+CRYPTO_SYMBOLS = [
+    "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "LINK/USD",
+    "LTC/USD", "DOT/USD", "AAVE/USD", "BCH/USD", "DOGE/USD",
+    "ADA/USD", "ARB/USD", "CRV/USD", "FIL/USD", "LDO/USD",
+    "ONDO/USD", "PAXG/USD", "RENDER/USD", "SHIB/USD", "SKY/USD",
+    "SUSHI/USD", "WIF/USD", "XRP/USD", "XTZ/USD", "YFI/USD",
+    "BONK/USD",
+]
 CRYPTO_YF_MAP = {
     "BTC/USD": "BTC-USD",
     "ETH/USD": "ETH-USD",
     "SOL/USD": "SOL-USD",
+    "AVAX/USD": "AVAX-USD",
+    "LINK/USD": "LINK-USD",
+    "LTC/USD": "LTC-USD",
+    "DOT/USD": "DOT-USD",
+    "AAVE/USD": "AAVE-USD",
+    "BCH/USD": "BCH-USD",
+    "DOGE/USD": "DOGE-USD",
+    "ADA/USD": "ADA-USD",
+    "ARB/USD": "ARB-USD",
+    "CRV/USD": "CRV-USD",
+    "FIL/USD": "FIL-USD",
+    "LDO/USD": "LDO-USD",
+    "ONDO/USD": "ONDO-USD",
+    "PAXG/USD": "PAXG-USD",
+    "RENDER/USD": "RENDER-USD",
+    "SHIB/USD": "SHIB-USD",
+    "SKY/USD": "SKY-USD",
+    "SUSHI/USD": "SUSHI-USD",
+    "WIF/USD": "WIF-USD",
+    "XRP/USD": "XRP-USD",
+    "XTZ/USD": "XTZ-USD",
+    "YFI/USD": "YFI-USD",
+    "BONK/USD": "BONK-USD",
 }
+
+def yf_symbol_for(symbol):
+    """Map any symbol form ("ETH/USD", "ETHUSD", "ETH-USD") to a yfinance ticker.
+
+    Alpaca position objects report slashless symbols ("ETHUSD"), which used to
+    miss CRYPTO_YF_MAP (slashed keys) and 404 on Yahoo — blinding the sell scan
+    for every held position.
+    """
+    yf_sym = CRYPTO_YF_MAP.get(symbol)
+    if yf_sym is None and "/" not in symbol and symbol.endswith("USD"):
+        yf_sym = CRYPTO_YF_MAP.get(f"{symbol[:-3]}/USD")
+    return yf_sym or symbol.replace("/", "-")
+
 
 # Cooldown: don't re-buy within 60 minutes of selling (crypto is 24/7)
 COOLDOWN_MINUTES = 60
@@ -86,8 +131,8 @@ COOLDOWN_MINUTES = 60
 # Position sizing — crypto is volatile, so cap per position
 DEFAULT_BUY_AMOUNT = 3000
 MAX_BUY_AMOUNT = 8000
-MAX_POSITIONS = 3  # Max 3 crypto positions at once
-TARGET_MAX_POSITIONS = 2
+MAX_POSITIONS = 8  # Max crypto positions (was 3) -- deploy idle cash across a wider book
+TARGET_MAX_POSITIONS = 5
 
 # RSI thresholds (crypto is more volatile)
 RSI_OVERBOUGHT = 75
@@ -134,7 +179,7 @@ def get_crypto_yf_data(symbol, period="3mo", interval="1h"):
     
     Uses 1-hour candles for better wave detection on crypto.
     """
-    yf_symbol = CRYPTO_YF_MAP.get(symbol, symbol.replace("/", "-"))
+    yf_symbol = yf_symbol_for(symbol)
     data = yf.download(
         yf_symbol,
         period=period,
@@ -426,17 +471,20 @@ def evaluate_crypto_setup(symbol):
     data = compute_indicators(data)
     
     # Check overall trend (must be bullish for long entries)
-    current_price = float(data["Close"].iloc[-1])
-    sma20 = float(data["SMA20"].iloc[-1])
-    sma50 = float(data["SMA50"].iloc[-1])
-    rsi = float(data["RSI"].iloc[-1])
-    adx = float(data["ADX"].iloc[-1])
-    macd_hist = float(data["MACD_HIST"].iloc[-1])
-    bb_upper = float(data["BB_UPPER"].iloc[-1])
-    bb_lower = float(data["BB_LOWER"].iloc[-1])
-    
-    if pd.isna(sma20) or pd.isna(sma50) or pd.isna(rsi) or pd.isna(adx):
+    # NA-guard BEFORE float(): thin alts return gappy yfinance data and
+    # float(pd.NA) raises, which used to kill the whole scan mid-list.
+    last = data.iloc[-1]
+    fields = ("Close", "SMA20", "SMA50", "RSI", "ADX", "MACD_HIST", "BB_UPPER", "BB_LOWER")
+    if any(pd.isna(last[f]) for f in fields):
         return None
+    current_price = float(last["Close"])
+    sma20 = float(last["SMA20"])
+    sma50 = float(last["SMA50"])
+    rsi = float(last["RSI"])
+    adx = float(last["ADX"])
+    macd_hist = float(last["MACD_HIST"])
+    bb_upper = float(last["BB_UPPER"])
+    bb_lower = float(last["BB_LOWER"])
     
     # Elliott Wave detection
     pattern = identify_elliott_waves(data)
@@ -786,7 +834,7 @@ def crypto_on_cooldown(symbol):
 def place_crypto_buy(symbol, dollars):
     """Place a crypto buy order via Alpaca."""
     # Get current price from yfinance
-    yf_symbol = CRYPTO_YF_MAP.get(symbol, symbol.replace("/", "-"))
+    yf_symbol = yf_symbol_for(symbol)
     price_data = yf.Ticker(yf_symbol).history(period="1h")
     
     if price_data.empty:
@@ -821,7 +869,7 @@ def place_crypto_sell(symbol, dollars=None, sell_all=True):
     if sell_all:
         qty = owned_qty
     else:
-        yf_symbol = CRYPTO_YF_MAP.get(symbol, symbol.replace("/", "-"))
+        yf_symbol = yf_symbol_for(symbol)
         price_data = yf.Ticker(yf_symbol).history(period="1h")
         if price_data.empty:
             raise RuntimeError(f"No price data for {symbol}")
@@ -962,10 +1010,45 @@ def crypto_sell_risk_check(symbol, dollars):
     return True, "OK"
 
 
+def btc_regime_ok():
+    """Market regime filter for NEW crypto entries.
+
+    Backtested rule (reports/strategy_search/btc_regime_gate_test.py, 2026-07-17):
+    only take new crypto buys when BTC's last daily close is ABOVE its 200-day SMA.
+    Over 2021-08..2026-07 this ~doubled return (+54.6% -> +107.5% on BTC) and
+    roughly halved max drawdown (77% -> 36%) vs always-in; it also cut the current
+    bear's loss in half. Sells are NOT gated — existing positions stay managed.
+
+    Returns (ok, detail). Fail-safe: any data error returns (False, ...) so a
+    fetch glitch pauses new buys rather than buying blind into a possible bear.
+    """
+    try:
+        data = yf.download("BTC-USD", period="400d", interval="1d",
+                           progress=False, auto_adjust=True)
+        if data is None or data.empty:
+            return False, "no BTC data (fail-safe: new buys paused)"
+        if getattr(data.columns, "nlevels", 1) > 1:
+            data.columns = data.columns.get_level_values(0)
+        closes = data["Close"].dropna()
+        if len(closes) < 200:
+            return False, f"insufficient BTC history ({len(closes)}<200; fail-safe: new buys paused)"
+        sma200 = float(closes.tail(200).mean())
+        last = float(closes.iloc[-1])
+        ok = last > sma200
+        return ok, f"BTC ${last:,.0f} vs 200DMA ${sma200:,.0f} — {'RISK-ON' if ok else 'RISK-OFF'}"
+    except Exception as e:
+        return False, f"regime check error ({e}); fail-safe: new buys paused"
+
+
 def run_crypto_scan():
     """Main crypto scan — checks sell signals, then buy setups."""
     trade_actions = []
-    
+
+    # Regime filter for ALL new entries (ORB + Elliott Wave): only open new crypto
+    # positions when BTC's last daily close is above its 200-day SMA. Computed once
+    # here and reused by both buy phases. Sells are never gated.
+    regime_ok, regime_msg = btc_regime_ok()
+
     # --- Phase 1: Sell signals on existing crypto positions ---
     crypto_positions = get_crypto_positions()
     
@@ -973,8 +1056,12 @@ def run_crypto_scan():
         print("\n=== CRYPTO SELL SIGNAL SCAN ===")
         for pos in crypto_positions:
             symbol = pos.symbol
-            setup = evaluate_crypto_setup(symbol)
-            
+            try:
+                setup = evaluate_crypto_setup(symbol)
+            except Exception as e:
+                print(f"  {symbol}: SCAN ERROR ({e}) — skipping")
+                continue
+
             if setup is None:
                 print(f"  {symbol}: NO DATA")
                 continue
@@ -1008,7 +1095,9 @@ def run_crypto_scan():
     minutes_since_open = (now_et - crypto_open).total_seconds() / 60
     orb_timeframes = ["15m", "5m", "30m"]
     orb_candidates = []
-    if 0 < minutes_since_open <= ORB_MAX_TRADE_MINUTES:
+    if 0 < minutes_since_open <= ORB_MAX_TRADE_MINUTES and not regime_ok:
+        print(f"\n  ⛔ ORB scan skipped — BTC below 200DMA ({regime_msg})")
+    elif 0 < minutes_since_open <= ORB_MAX_TRADE_MINUTES:
         print("\n=== CRYPTO ORB BREAKOUT SCAN ===")
         print(f"  Window: {minutes_since_open:.0f} min after US open (closes at {ORB_MAX_TRADE_MINUTES} min)")
         _clear_crypto_orb_state()
@@ -1076,6 +1165,11 @@ Risk/Reward: {orb_setup['risk_reward']:.1f}
 
     # --- Phase 2: Buy setups ---
     print("\n=== CRYPTO BUY SETUP SCAN ===")
+    print(f"  Regime gate: {regime_msg}")
+    if not regime_ok:
+        print("  ⛔ BTC below 200DMA — skipping new crypto buys (sells still active).")
+        return trade_actions
+
     candidates = []
     
     for symbol in CRYPTO_SYMBOLS:
@@ -1091,8 +1185,12 @@ Risk/Reward: {orb_setup['risk_reward']:.1f}
             print(f"  {symbol}: On cooldown, skipping")
             continue
         
-        setup = evaluate_crypto_setup(symbol)
-        
+        try:
+            setup = evaluate_crypto_setup(symbol)
+        except Exception as e:
+            print(f"  {symbol}: SCAN ERROR ({e}) — skipping")
+            continue
+
         if setup is None:
             print(f"  {symbol}: NO DATA / INSUFFICIENT HISTORY")
             continue

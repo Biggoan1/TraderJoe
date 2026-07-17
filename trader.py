@@ -53,7 +53,7 @@ from strategy.model_config import CONTEXT_PAPER as _MODEL_CONTEXT, resolve_model
 _LEGACY_MODEL_DEFAULT = "gpt-5-mini"
 AI_MODEL = resolve_model(_MODEL_CONTEXT, default=_LEGACY_MODEL_DEFAULT)
 DB_FILE = "trades.db"
-COOLDOWN_MINUTES = 30  # Don't re-buy a symbol for 30 min after selling it
+COOLDOWN_MINUTES = 1440  # Anti-whipsaw: no re-buy for 24h (1 trading day) after a sell (was 30); lab tunes this
 
 ET = ZoneInfo("America/New_York")
 

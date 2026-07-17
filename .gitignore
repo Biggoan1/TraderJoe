@@ -24,3 +24,9 @@ reports/
 screener_log.txt
 trending_watchlist.json
 status.md
+
+# data warehouses (regenerable from Alpaca) + backups + scratch
+market_data/
+research_data/
+*.bak*
+tmp_*.py
