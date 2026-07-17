@@ -30,3 +30,4 @@ market_data/
 research_data/
 *.bak*
 tmp_*.py
+.claude/
